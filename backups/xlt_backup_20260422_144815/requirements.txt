@@ -1,0 +1,10 @@
+# XLT System v3.0 - Web Interface Dependencies
+flask==2.3.3
+easyocr==1.7.0
+googletrans==4.0.0rc1
+openpyxl==3.1.2
+pillow==9.5.0
+requests==2.31.0
+psutil==7.2.2
+# GUI 라이브러리 (시스템 트레이용)
+pystray==0.19.4

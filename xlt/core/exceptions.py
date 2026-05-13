@@ -47,3 +47,37 @@ class FigmaAPIError(InputProcessingError):
     def __init__(self, message: str, status_code: Optional[int] = None):
         self.status_code = status_code
         super().__init__("Figma API", f"{message} (상태 코드: {status_code})" if status_code else message)
+
+
+class GoogleSheetsError(XLTException):
+    """구글 시트 관련 오류 (v5.1.1 추가)"""
+    def __init__(self, message: str, error_code: Optional[str] = None):
+        self.error_code = error_code
+        super().__init__(f"구글 시트 오류: {message}")
+
+
+class GoogleSheetsAPIError(GoogleSheetsError):
+    """구글 시트 API 관련 오류"""
+    def __init__(self, message: str, status_code: Optional[int] = None, error_code: Optional[str] = None):
+        self.status_code = status_code
+        super().__init__(message, error_code)
+
+
+class TerminologyError(XLTException):
+    """용어집 관련 오류"""
+    def __init__(self, operation: str, message: str):
+        self.operation = operation
+        super().__init__(f"용어집 오류 ({operation}): {message}")
+
+
+class TerminologyCacheError(XLTException):
+    """용어집 캐시 관련 오류"""
+    def __init__(self, operation: str, message: str):
+        self.operation = operation
+        super().__init__(f"용어집 캐시 오류 ({operation}): {message}")
+
+
+class AuthenticationError(GoogleSheetsError):
+    """인증 오류"""
+    def __init__(self, message: str = "구글 시트 인증에 실패했습니다"):
+        super().__init__(message, "AUTH_FAILED")

@@ -27,3 +27,9 @@ torchvision
 
 # Pandas (Unifi 번역 시스템용)
 pandas
+
+# Google Sheets API (용어집 관리용 - v5.1.1 추가)
+google-auth==2.23.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+google-api-python-client==2.100.0

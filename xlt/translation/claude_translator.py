@@ -526,7 +526,42 @@ class ClaudeTranslator:
     # ===== Claude 통합 맞춤법 검사 + 번역 시스템 (v4.0) =====
 
     def _load_guide_terminology(self) -> str:
-        """guide.md에서 78개 용어집 로드"""
+        """용어집 로드 (Google Sheets 우선, guide.md 폴백) - v5.1.1 확장"""
+        try:
+            # 1단계: Google Sheets 시도 (v5.1.1 신규)
+            if hasattr(self.config, 'google_sheets_enabled') and self.config.google_sheets_enabled:
+                try:
+                    from ..terminology import GoogleSheetsTerminology
+                    sheets_terminology = GoogleSheetsTerminology(self.config)
+
+                    if sheets_terminology.is_available():
+                        print("📊 Google Sheets 용어집 시스템 사용")
+                        terminology_prompt = sheets_terminology.format_for_claude_prompt(limit=50)
+
+                        if terminology_prompt:
+                            print(f"✅ Google Sheets 용어집 로드 성공: {len(terminology_prompt.split(chr(10)))}개 용어")
+                            return terminology_prompt
+                        else:
+                            print("⚠️ Google Sheets 용어집이 비어있습니다")
+                    else:
+                        print("⚠️ Google Sheets 시스템을 사용할 수 없습니다")
+
+                except Exception as e:
+                    print(f"⚠️ Google Sheets 용어집 로드 실패: {str(e)}")
+                    if not getattr(self.config, 'fallback_to_guide_md', True):
+                        # 폴백이 비활성화된 경우 예외 발생
+                        raise
+
+            # 2단계: guide.md 폴백 (기존 로직 유지)
+            print("📋 guide.md 폴백 방식 사용")
+            return self._load_guide_terminology_legacy()
+
+        except Exception as e:
+            print(f"⚠️ 용어집 로드 실패, 하드코딩 용어 사용: {str(e)}")
+            return self._get_fallback_terminology()
+
+    def _load_guide_terminology_legacy(self) -> str:
+        """기존 guide.md 방식으로 용어집 로드 (폴백용)"""
         try:
             # v4.2 수정: config_path 안전하게 가져오기
             config_path = getattr(self.config, 'config_path', '') or os.getcwd()
@@ -570,12 +605,18 @@ class ClaudeTranslator:
                         break
 
                 if terminology_lines:
+                    print(f"✅ guide.md 용어집 로드 성공: {len(terminology_lines[:50])}개 용어")
                     return '\n'.join(terminology_lines[:50])  # 프롬프트 길이 제한을 위해 50개만
 
         except Exception as e:
             print(f"⚠️ guide.md 로드 실패: {e}")
 
-        # 폴백: 하드코딩된 핵심 용어집 (기존)
+        # 최종 폴백
+        return self._get_fallback_terminology()
+
+    def _get_fallback_terminology(self) -> str:
+        """하드코딩된 핵심 용어집 (최종 폴백)"""
+        print("🔄 하드코딩된 핵심 용어집 사용 (12개 용어)")
         return """- "거래" → EN: "transaction", JA: "取引", ZH: "交易", TH: "ธุรกรรม"
 - "지갑" → EN: "wallet", JA: "ウォレット", ZH: "錢包", TH: "กระเป๋า"
 - "토큰" → EN: "token", JA: "トークン", ZH: "代幣", TH: "โทเค็น"

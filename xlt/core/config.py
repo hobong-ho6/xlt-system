@@ -58,6 +58,16 @@ class XLTConfig:
     claude_timeout: int = 120  # Claude CLI 타임아웃 (초)
     claude_chunk_size: int = 10  # 청크 크기 (성능 최적화)
 
+    # Google Sheets 용어집 관리 설정 (v5.1.1 추가)
+    google_sheets_enabled: bool = False  # Google Sheets 용어집 사용 여부
+    google_sheets_id: Optional[str] = None  # 구글 시트 ID
+    google_sheets_credentials: Optional[str] = None  # Service Account JSON 파일 경로
+    terminology_cache_ttl: int = 7200  # 용어집 캐시 TTL (초) - 2시간
+    terminology_sheet_name: str = 'Terminology'  # 용어집 시트 탭 이름
+    exceptions_sheet_name: str = 'Exceptions'  # 예외 항목 시트 탭 이름
+    metadata_sheet_name: str = 'Metadata'  # 메타데이터 시트 탭 이름
+    fallback_to_guide_md: bool = True  # Google Sheets 실패 시 guide.md 폴백 여부
+
     # 출력 설정
     excel_output_dir: str = 'output'
     excel_key_format: str = 'item_{number}'
@@ -189,6 +199,51 @@ class XLTConfig:
             return token
 
         return None
+
+    def get_google_credentials(self) -> Optional[str]:
+        """
+        Google Sheets 서비스 계정 인증 정보 경로 가져오기
+
+        조회 순서:
+        1. 설정 파일의 google_sheets_credentials 경로
+        2. 환경 변수 GOOGLE_SHEETS_CREDENTIALS
+        3. 환경 변수 GOOGLE_APPLICATION_CREDENTIALS
+        4. 기본 경로 (credentials/google_sheets_service_account.json)
+
+        Returns:
+            Optional[str]: 인증 파일 경로 (없거나 유효하지 않으면 None)
+        """
+        # 1순위: 설정에서 지정된 경로
+        if self.google_sheets_credentials and os.path.exists(self.google_sheets_credentials):
+            return self.google_sheets_credentials
+
+        # 2순위: 환경 변수 (Google Sheets 전용)
+        env_path = os.getenv('GOOGLE_SHEETS_CREDENTIALS')
+        if env_path and os.path.exists(env_path):
+            return env_path
+
+        # 3순위: 환경 변수 (Google 공통)
+        common_env_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if common_env_path and os.path.exists(common_env_path):
+            return common_env_path
+
+        # 4순위: 프로젝트 기본 경로
+        default_path = os.path.join(self.config_path, 'credentials', 'google_sheets_service_account.json')
+        if os.path.exists(default_path):
+            return default_path
+
+        return None
+
+    def is_google_sheets_enabled(self) -> bool:
+        """
+        Google Sheets 용어집 시스템 사용 가능 여부 확인
+
+        Returns:
+            bool: 사용 가능하면 True
+        """
+        return (self.google_sheets_enabled and
+                bool(self.google_sheets_id) and
+                bool(self.get_google_credentials()))
 
     def get_token(self, service: str) -> Optional[str]:
         """

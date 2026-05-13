@@ -13,6 +13,22 @@ from datetime import datetime
 import shutil
 import tempfile
 
+# 버전 관리자 import
+try:
+    from .version_manager import get_version_number
+except ImportError:
+    # 폴백: 직접 version.json 읽기
+    def get_version_number():
+        try:
+            version_file = Path(__file__).parent.parent.parent / "version.json"
+            if version_file.exists():
+                with open(version_file, 'r') as f:
+                    data = json.load(f)
+                    return data.get('version', '5.0.1')
+        except:
+            pass
+        return '5.0.1'
+
 
 class XLTUpdater:
     """XLT 시스템 자동 업데이트 관리"""
@@ -88,7 +104,7 @@ class XLTUpdater:
                     'message': current_message,
                     'date': current_date,
                     'branch': self._get_current_branch(),
-                    'version': '5.0.1-git',
+                    'version': f'{get_version_number()}-git',
                     'source': 'git_repo'
                 }
         except Exception as e:
@@ -141,7 +157,7 @@ class XLTUpdater:
                 'message': current_message,
                 'date': current_date,
                 'branch': self._get_current_branch(),
-                'version': '5.0.1-git',
+                'version': f'{get_version_number()}-git',
                 'source': 'git_repo'
             }
         except Exception as e:

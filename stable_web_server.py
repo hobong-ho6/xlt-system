@@ -567,6 +567,15 @@ def serve_guide():
 # XLT v3.0: 자동 테스트 기능 제거
 # @app.route('/test_web_flow.html') - 자동 테스트 페이지 제거됨
 
+@app.route('/terminology-test')
+def terminology_test_page():
+    """용어집 API 테스트 페이지"""
+    try:
+        return render_template('terminology_test.html')
+    except Exception as e:
+        app.logger.error(f"용어집 테스트 페이지 오류: {str(e)}")
+        return f'용어집 테스트 페이지 로드 실패: {str(e)}', 500
+
     # serve_uploaded_image 제거됨 - 파일 업로드 기능 비활성화
 
 @app.route('/debug-sessions')

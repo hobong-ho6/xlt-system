@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(lsof:*)",
+      "Bash(pkill -f stable_web_server.py)",
+      "Bash(pgrep:*)",
+      "Bash(python3 stable_web_server.py:*)",
+      "Bash(python3 main.py:*)",
+      "Bash(python3 test_*)",
+      "Bash(pip show:*)",
+      "Bash(pip list:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "if ! pgrep -f 'stable_web_server.py' > /dev/null; then python3 stable_web_server.py > /dev/null 2>&1 & echo \"🌐 XLT System v2.0 웹 서버가 http://localhost:5004 에서 시작되었습니다.\"; else echo \"🔄 XLT System v2.0 웹 서버가 이미 실행 중입니다.\"; fi",
+        "statusMessage": "XLT System v2.0 웹 서버 시작 중...",
+        "timeout": 10,
+        "async": false
+      }]
+    }]
+  }
+}

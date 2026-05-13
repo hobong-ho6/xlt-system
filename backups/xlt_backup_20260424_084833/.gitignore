@@ -1,0 +1,95 @@
+# XLT System .gitignore
+
+# 사용자 생성 파일들
+output/*.xlsx
+output/*.csv
+output/temp/
+logs/
+figma/
+figma_config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 가상환경
+venv/
+ENV/
+env/
+.env
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 임시 파일들
+*.tmp
+*.temp
+*.log
+*.bak
+*.backup
+
+# 테스트 파일들
+test_images/
+temp_downloads/
+
+# 시스템 파일들
+*.command.backup
+install_*.command.backup
+
+# 백업 폴더 (자동 업데이트 시스템에서 생성)
+backups/
+
+# Claude Code 로컬 설정 (보안상 제외)
+.claude/settings.local.json
+
+# 사용자별 설정 파일 (개인 환경에 따라 다름)
+user_config.json
+
+# 한글 파일명 (ZIP 압축 호환성 문제로 제외)
+# 영문 파일명은 허용
+install/*터미널*
+install/*가이드*
+install/*설치*
+install/*한글*
+install/더블클릭*
+install/완전자동*
+**/터미널*
+**/*한글*
+**/*설치*
+**/*가이드*.md
+!install/*GUIDE*.md
+!install/*INSTALLATION*.md
+!install/*TERMINAL*.md

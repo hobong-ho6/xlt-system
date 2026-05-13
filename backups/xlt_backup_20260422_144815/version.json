@@ -1,0 +1,20 @@
+{
+  "version": "3.0.0",
+  "build": "2024.04.22",
+  "name": "XLT System",
+  "description": "Figma Design → Multi-language Translation Automation Tool",
+  "release_date": "2024-04-22",
+  "changelog": [
+    "완전 자동 설치 시스템 구현",
+    "GitHub 배포 및 자동 업데이트 지원",
+    "Python, Xcode Tools, Git 자동 설치",
+    "번역 미리보기 기능 완성",
+    "시스템 성능 분석 및 진단 기능"
+  ],
+  "requirements": {
+    "python": ">=3.8",
+    "macos": ">=10.15",
+    "disk_space": "2GB",
+    "memory": "4GB"
+  }
+}

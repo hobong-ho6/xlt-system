@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ full_name }} - 시스템 설정</title>
+
+    <!-- Meta Tags -->
+    <meta name="description" content="{{ full_name }} 시스템 설정 - Claude AI 전용 번역, 피그마 토큰 관리">
+    <meta property="og:title" content="{{ full_name }} - 시스템 설정">
+    <meta property="og:description" content="Claude AI 전용 번역 엔진 설정 및 시스템 관리">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- 헤더 -->
+        <header class="row bg-primary text-white py-3 mb-4">
+            <div class="col-12">
+                <div class="container">
+                    <a href="/" class="text-decoration-none text-white header-link">
+                        <h1 class="mb-0">
+                            <i class="fas fa-cog me-2"></i>
+                            {{ full_name }} - 설정
+                        </h1>
+                        <p class="mb-0 text-light">시스템 초기 설정 및 관리</p>
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- 설정 상태 알림 -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="alert" id="setup-status-alert">
+                        <i class="fas fa-sync-alt fa-spin me-2"></i>
+                        <span>설정 상태 확인 중...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 설정 폼 -->
+            <div class="row">
+                <!-- 왼쪽: 필수 설정 -->
+                <div class="col-lg-8">
+                    <div class="card shadow">
+                        <div class="card-header bg-primary text-white">
+                            <h3 class="card-title mb-0">
+                                <i class="fas fa-key me-2"></i>
+                                필수 설정
+                            </h3>
+                        </div>
+                        <div class="card-body">
+                            <!-- 피그마 토큰 설정 -->
+                            <div class="mb-4">
+                                <label for="figma-token" class="form-label fw-bold">
+                                    <i class="fab fa-figma me-2"></i>
+                                    피그마 액세스 토큰
+                                </label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="figma-token"
+                                           placeholder="피그마 Personal Access Token을 입력하세요">
+                                    <button class="btn btn-outline-secondary" type="button" id="toggle-token">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="btn btn-primary" type="button" id="test-figma-token">
+                                        <i class="fas fa-check me-1"></i>
+                                        토큰 테스트
+                                    </button>
+                                </div>
+                                <div class="form-text">
+                                    <strong>토큰 발급 방법:</strong><br>
+                                    1. Figma 웹사이트 로그인<br>
+                                    2. Settings → Personal Access Tokens<br>
+                                    3. "Create new token" 클릭<br>
+                                    4. 생성된 토큰을 복사해서 위에 붙여넣기
+                                </div>
+                                <div id="figma-token-result" class="mt-2" style="display: none;"></div>
+                            </div>
+
+
+                            <!-- XLT System v3.1: 출력 디렉토리 설정 제거됨 (메모리 기반 직접 다운로드로 변경) -->
+
+                            <!-- 서버 포트 설정 -->
+                            <div class="mb-4">
+                                <label for="server-port" class="form-label fw-bold">
+                                    <i class="fas fa-network-wired me-2"></i>
+                                    웹서버 포트
+                                </label>
+                                <input type="number" class="form-control" id="server-port"
+                                       value="{{ current_settings.get('server_port', 5004) }}" min="1024" max="65535">
+                                <div class="form-text">
+                                    웹서버가 실행될 포트 번호입니다. (기본값: 5004)<br>
+                                    <strong class="text-warning">
+                                        <i class="fas fa-exclamation-triangle me-1"></i>
+                                        포트 변경 시 서버 재시작이 필요합니다.
+                                    </strong>
+                                </div>
+                            </div>
+
+                            <!-- 로그 설정 -->
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-file-alt me-2"></i>
+                                    로그 설정
+                                </label>
+
+                                <!-- 로그 활성화 토글 -->
+                                <div class="mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="log-enabled" checked>
+                                        <label class="form-check-label" for="log-enabled">
+                                            로그 기능 활성화
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- 로그 레벨 선택 -->
+                                <div class="mb-3">
+                                    <label for="log-level" class="form-label">로그 레벨</label>
+                                    <select class="form-select" id="log-level">
+                                        <option value="DEBUG">DEBUG (상세)</option>
+                                        <option value="INFO" selected>INFO (기본)</option>
+                                        <option value="WARNING">WARNING (경고만)</option>
+                                        <option value="ERROR">ERROR (오류만)</option>
+                                    </select>
+                                </div>
+
+                                <!-- 로그 디렉토리 -->
+                                <div class="mb-3">
+                                    <label for="log-dir" class="form-label">로그 디렉토리</label>
+                                    <input type="text" class="form-control" id="log-dir" value="logs" placeholder="logs">
+                                    <div class="form-text">로그 파일이 저장될 폴더 경로</div>
+                                </div>
+
+                                <!-- 로그 파일 크기 제한 -->
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="log-max-size" class="form-label">최대 파일 크기 (MB)</label>
+                                        <input type="number" class="form-control" id="log-max-size" value="10" min="1" max="100">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="log-backup-count" class="form-label">백업 파일 수</label>
+                                        <input type="number" class="form-control" id="log-backup-count" value="3" min="1" max="10">
+                                    </div>
+                                </div>
+
+                                <!-- 자동 업데이터 로그 설정 -->
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="auto-updater-log" checked>
+                                        <label class="form-check-label" for="auto-updater-log">
+                                            자동 업데이터 로그 활성화
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="auto-updater-separate">
+                                        <label class="form-check-label" for="auto-updater-separate">
+                                            자동 업데이터 로그 별도 파일 저장
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- 로그 설정 저장 버튼 -->
+                                <div class="d-grid">
+                                    <button type="button" class="btn btn-outline-primary" id="save-log-settings">
+                                        <i class="fas fa-cog me-2"></i>
+                                        로그 설정 저장 (재시작 불필요)
+                                    </button>
+                                </div>
+
+                                <!-- 현재 로그 파일 정보 표시 -->
+                                <div class="mt-3" id="log-files-info" style="display: none;">
+                                    <h6>현재 로그 파일</h6>
+                                    <div id="log-files-list"></div>
+                                </div>
+
+                                <div class="form-text">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    로그 설정 변경 시 서버 재시작 없이 즉시 적용됩니다.
+                                </div>
+                            </div>
+
+                            <!-- 설정 저장 버튼 -->
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-success btn-lg" id="save-settings">
+                                    <i class="fas fa-save me-2"></i>
+                                    설정 저장 및 적용
+                                </button>
+                                <button type="button" class="btn btn-warning btn-lg" id="restart-server">
+                                    <i class="fas fa-sync-alt me-2"></i>
+                                    서버 재시작
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 오른쪽: 업데이트 관리 -->
+                <div class="col-lg-4">
+                    <div class="card shadow mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="fas fa-sync-alt me-2"></i>
+                                업데이트 관리
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <p class="small mb-2">
+                                    <strong>현재 버전:</strong> <span class="badge bg-success">{{ version }}</span>
+                                </p>
+                                <p class="small mb-3">
+                                    <strong>업데이트 상태:</strong> <span id="update-status" class="text-muted">확인 중...</span>
+                                </p>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button id="check-update" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-search me-1"></i>
+                                    업데이트 확인
+                                </button>
+                                <button id="install-update" class="btn btn-success btn-sm" style="display: none;">
+                                    <i class="fas fa-download me-1"></i>
+                                    업데이트 설치
+                                </button>
+                            </div>
+
+                            <div id="update-info" class="mt-3" style="display: none;">
+                                <div class="alert alert-info small">
+                                    <div id="update-details"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Claude 계정 정보 -->
+                    <div class="card shadow mb-4">
+                        <div class="card-header bg-secondary text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="fas fa-robot me-2"></i>
+                                Claude 계정 정보
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="claude-account-loading" class="text-center py-3">
+                                <i class="fas fa-spinner fa-spin me-2"></i>
+                                계정 정보 로딩 중...
+                            </div>
+
+                            <div id="claude-account-error" class="alert alert-warning" style="display: none;">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <span id="claude-error-message">계정 정보를 불러올 수 없습니다.</span>
+                            </div>
+
+                            <div id="claude-account-info" style="display: none;">
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <div class="bg-light rounded p-3">
+                                            <div class="row text-center">
+                                                <div class="col-4">
+                                                    <div class="fw-bold text-muted small">로그인 상태</div>
+                                                    <div id="claude-login-status" class="badge bg-secondary">확인 중</div>
+                                                </div>
+                                                <div class="col-4">
+                                                    <div class="fw-bold text-muted small">API 제공자</div>
+                                                    <div id="claude-api-provider" class="small">-</div>
+                                                </div>
+                                                <div class="col-4">
+                                                    <div class="fw-bold text-muted small">인증 방법</div>
+                                                    <div id="claude-auth-method" class="small">-</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <button id="refresh-claude-info" class="btn btn-outline-secondary btn-sm w-100">
+                                            <i class="fas fa-sync me-1"></i>
+                                            계정 정보 새로고침
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 설정 도움말 -->
+                    <div class="card shadow">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="fas fa-question-circle me-2"></i>
+                                설정 도움말
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- 피그마 토큰 도움말 -->
+                            <div class="mb-3">
+                                <h6 class="fw-bold text-primary">
+                                    <i class="fab fa-figma me-1"></i>
+                                    피그마 토큰이란?
+                                </h6>
+                                <p class="small">
+                                    XLT 시스템이 사용자의 피그마 파일에 접근하기 위한 인증 키입니다.
+                                    개인별로 발급받아야 하며, 타인과 공유하면 안 됩니다.
+                                </p>
+                            </div>
+
+                            <!-- 보안 주의사항 -->
+                            <div class="mb-3">
+                                <h6 class="fw-bold text-warning">
+                                    <i class="fas fa-shield-alt me-1"></i>
+                                    보안 주의사항
+                                </h6>
+                                <ul class="small">
+                                    <li>토큰을 다른 사람과 공유하지 마세요</li>
+                                    <li>토큰이 유출되었다면 즉시 재발급하세요</li>
+                                    <li>정기적으로 토큰을 갱신하는 것을 권장합니다</li>
+                                </ul>
+                            </div>
+
+                            <!-- 문제해결 -->
+                            <div class="mb-3">
+                                <h6 class="fw-bold text-danger">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>
+                                    문제해결
+                                </h6>
+                                <ul class="small">
+                                    <li><strong>토큰 테스트 실패:</strong> 토큰을 다시 확인해보세요</li>
+                                    <li><strong>디렉토리 오류:</strong> 경로가 존재하고 쓰기 권한이 있는지 확인하세요</li>
+                                    <li><strong>포트 충돌:</strong> 다른 포트 번호로 변경해보세요</li>
+                                </ul>
+                            </div>
+
+                            <!-- 연락처 -->
+                            <div class="alert alert-light">
+                                <small>
+                                    <strong>도움이 필요하시면:</strong><br>
+                                    시스템 관리자에게 문의하거나<br>
+                                    <code>/api/health</code>에서 상세 상태를 확인해보세요.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 푸터 -->
+        <footer class="mt-5 py-4 bg-light text-center">
+            <div class="container">
+                <p class="text-muted mb-0">
+                    {{ full_name }} 설정 관리
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        class SettingsManager {
+            constructor() {
+                this.initializeEventHandlers();
+                this.checkCurrentSettings();
+                this.loadClaudeAccountInfo();
+            }
+
+            initializeEventHandlers() {
+                // 토큰 보이기/숨기기
+                document.getElementById('toggle-token').addEventListener('click', () => {
+                    this.toggleTokenVisibility();
+                });
+
+                // 피그마 토큰 테스트
+                document.getElementById('test-figma-token').addEventListener('click', () => {
+                    this.testFigmaToken();
+                });
+
+                // XLT System v3.1: 디렉토리 테스트 제거됨 (메모리 기반 직접 다운로드로 변경)
+
+                // 설정 저장
+                document.getElementById('save-settings').addEventListener('click', () => {
+                    this.saveSettings();
+                });
+
+                // 서버 재시작
+                document.getElementById('restart-server').addEventListener('click', () => {
+                    this.restartServer();
+
+                // Claude 계정 정보 새로고침
+                document.getElementById('refresh-claude-info').addEventListener('click', () => {
+                    this.loadClaudeAccountInfo();
+                });
+
+                // 업데이트 확인
+                document.getElementById('check-update').addEventListener('click', () => {
+                    this.checkForUpdates();
+                });
+
+                // 업데이트 설치
+                document.getElementById('install-update').addEventListener('click', () => {
+                    this.installUpdate();
+                });
+
+                // 페이지 로드 시 업데이트 상태 확인
+                this.checkUpdateStatus();
+
+                // 로그 설정 저장
+                document.getElementById('save-log-settings').addEventListener('click', () => {
+                    this.saveLogSettings();
+                });
+            }
+
+            async toggleTokenVisibility() {
+                const tokenInput = document.getElementById('figma-token');
+                const toggleButton = document.getElementById('toggle-token');
+                const icon = toggleButton.querySelector('i');
+
+                if (tokenInput.type === 'password') {
+                    // 토큰 보이기
+                    if (tokenInput.dataset.hasToken === 'true' && tokenInput.value === '••••••••••••••••') {
+                        // 실제 토큰 값 가져오기
+                        toggleButton.disabled = true;
+                        icon.className = 'fas fa-spinner fa-spin';
+
+                        try {
+                            const response = await fetch('/api/settings/get-figma-token', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({})
+                            });
+
+                            const data = await response.json();
+
+                            if (data.status === 'success') {
+                                tokenInput.value = data.token;
+                                tokenInput.type = 'text';
+                                icon.className = 'fas fa-eye-slash';
+                            } else {
+                                alert(`❌ 토큰 조회 실패: ${data.error}`);
+                                icon.className = 'fas fa-eye';
+                            }
+                        } catch (error) {
+                            alert('❌ 토큰을 불러올 수 없습니다.');
+                            icon.className = 'fas fa-eye';
+                        } finally {
+                            toggleButton.disabled = false;
+                        }
+                    } else {
+                        // 일반적인 보이기/숨기기
+                        tokenInput.type = 'text';
+                        icon.className = 'fas fa-eye-slash';
+                    }
+                } else {
+                    // 토큰 숨기기
+                    if (tokenInput.dataset.hasToken === 'true') {
+                        tokenInput.value = '••••••••••••••••';
+                    }
+                    tokenInput.type = 'password';
+                    icon.className = 'fas fa-eye';
+                }
+            }
+
+
+            async checkCurrentSettings() {
+                try {
+                    const response = await fetch('/api/settings/status');
+                    const data = await response.json();
+
+                    const alertDiv = document.getElementById('setup-status-alert');
+
+                    if (data.all_configured) {
+                        alertDiv.className = 'alert alert-success';
+                        alertDiv.innerHTML = '<i class="fas fa-check-circle me-2"></i>모든 필수 설정이 완료되었습니다!';
+                    } else {
+                        alertDiv.className = 'alert alert-warning';
+                        alertDiv.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>설정이 필요한 항목: ${data.missing_settings.join(', ')}`;
+                    }
+
+                    // 현재 설정값 표시
+                    if (data.current_settings.figma_token) {
+                        const tokenInput = document.getElementById('figma-token');
+                        tokenInput.value = '••••••••••••••••';
+                        tokenInput.dataset.hasToken = 'true';
+                        tokenInput.type = 'password';
+
+                        // 토글 버튼 상태 설정
+                        const toggleIcon = document.querySelector('#toggle-token i');
+                        toggleIcon.className = 'fas fa-eye';
+                    }
+
+
+                    // 로그 설정 로드
+                    await this.loadLogSettings();
+
+                } catch (error) {
+                    console.error('설정 상태 확인 실패:', error);
+                }
+            }
+
+            async testFigmaToken() {
+                const tokenInput = document.getElementById('figma-token');
+                const token = tokenInput.value;
+                const resultDiv = document.getElementById('figma-token-result');
+                const testButton = document.getElementById('test-figma-token');
+
+                let actualToken = token;
+
+                // 토큰이 마스킹되어 있으면 실제 토큰 가져오기
+                if (token === '••••••••••••••••' && tokenInput.dataset.hasToken === 'true') {
+                    testButton.disabled = true;
+                    testButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>토큰 조회 중...';
+
+                    try {
+                        const response = await fetch('/api/settings/get-figma-token', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({})
+                        });
+
+                        const data = await response.json();
+
+                        if (data.status === 'success') {
+                            actualToken = data.token;
+                        } else {
+                            resultDiv.style.display = 'block';
+                            resultDiv.innerHTML = `<div class="alert alert-danger">❌ 저장된 토큰 조회 실패: ${data.error}</div>`;
+                            testButton.disabled = false;
+                            testButton.innerHTML = '<i class="fas fa-check me-1"></i>토큰 테스트';
+                            return;
+                        }
+                    } catch (error) {
+                        resultDiv.style.display = 'block';
+                        resultDiv.innerHTML = '<div class="alert alert-danger">❌ 토큰을 조회할 수 없습니다.</div>';
+                        testButton.disabled = false;
+                        testButton.innerHTML = '<i class="fas fa-check me-1"></i>토큰 테스트';
+                        return;
+                    }
+                } else if (!token || token.trim() === '') {
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = '<div class="alert alert-warning">토큰을 입력해주세요.</div>';
+                    return;
+                }
+
+                testButton.disabled = true;
+                testButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>테스트 중...';
+
+                try {
+                    const response = await fetch('/api/settings/test-figma-token', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({token: actualToken})
+                    });
+
+                    const data = await response.json();
+                    resultDiv.style.display = 'block';
+
+                    if (data.status === 'success') {
+                        resultDiv.innerHTML = '<div class="alert alert-success">✅ 토큰이 유효합니다!</div>';
+                    } else {
+                        resultDiv.innerHTML = `<div class="alert alert-danger">❌ ${data.error}</div>`;
+                    }
+                } catch (error) {
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = '<div class="alert alert-danger">❌ 테스트 중 오류가 발생했습니다.</div>';
+                } finally {
+                    testButton.disabled = false;
+                    testButton.innerHTML = '<i class="fas fa-check me-1"></i>토큰 테스트';
+                }
+            }
+
+
+            // XLT System v3.1: testDirectory 메서드 제거됨 (메모리 기반 직접 다운로드로 변경)
+
+            async saveSettings() {
+                const saveButton = document.getElementById('save-settings');
+                const tokenInput = document.getElementById('figma-token');
+                // 토큰 값 결정
+                let figmaToken = null;
+                if (tokenInput.value && tokenInput.value !== '••••••••••••••••') {
+                    // 실제 토큰 값이 입력되어 있음
+                    figmaToken = tokenInput.value;
+                } else if (tokenInput.dataset.hasToken === 'true' && tokenInput.value === '••••••••••••••••') {
+                    // 기존 토큰 유지 (null로 전달)
+                    figmaToken = null;
+                }
+
+                const settings = {
+                    figma_token: figmaToken,
+                    // XLT System v3.1: output_directory 제거됨 (메모리 기반 직접 다운로드로 변경)
+                    server_port: parseInt(document.getElementById('server-port').value)
+                };
+
+                saveButton.disabled = true;
+                saveButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>저장 중...';
+
+                try {
+                    const response = await fetch('/api/settings/save', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(settings)
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        if (data.restart_required) {
+                            // 서버 재시작 필요
+                            const confirmRestart = confirm(
+                                `✅ 설정이 저장되었습니다!\n\n` +
+                                `⚠️ 다음 변경사항으로 인해 서버 재시작이 필요합니다:\n` +
+                                `${data.restart_reason.join('\n')}\n\n` +
+                                `새 접속 URL: ${data.new_url}\n\n` +
+                                `지금 서버를 재시작하시겠습니까?`
+                            );
+
+                            if (confirmRestart) {
+                                // 서버 재시작 요청
+                                this.restartServer(data.new_url);
+                            } else {
+                                alert('⚠️ 설정은 저장되었지만 서버를 수동으로 재시작해야 변경사항이 적용됩니다.');
+                            }
+                        } else {
+                            // 재시작 불필요
+                            alert('✅ 설정이 저장되고 적용되었습니다!\n메인 페이지로 이동합니다.');
+                            window.location.href = '/';
+                        }
+                    } else {
+                        alert(`❌ 저장 실패: ${data.error}`);
+                    }
+                } catch (error) {
+                    alert('❌ 설정 저장 중 오류가 발생했습니다.');
+                } finally {
+                    saveButton.disabled = false;
+                    saveButton.innerHTML = '<i class="fas fa-save me-2"></i>설정 저장 및 적용';
+                }
+            }
+
+            async restartServer(newUrl) {
+                try {
+                    // 재시작 안내 메시지
+                    document.body.innerHTML = `
+                        <div class="container-fluid d-flex align-items-center justify-content-center" style="min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <div class="text-center text-white">
+                                <div class="spinner-border mb-4" role="status" style="width: 4rem; height: 4rem;">
+                                    <span class="visually-hidden">재시작 중...</span>
+                                </div>
+                                <h2 class="mb-3">🔄 서버 재시작 중...</h2>
+                                <p class="mb-4">새로운 설정으로 서버를 재시작하고 있습니다.</p>
+                                <div class="alert alert-info d-inline-block">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    새 접속 URL: <strong>${newUrl}</strong>
+                                </div>
+                                <p class="mt-3 text-white-50">잠시만 기다려주세요...</p>
+                            </div>
+                        </div>
+                    `;
+
+                    // 서버 재시작 API 호출 (백그라운드)
+                    fetch('/api/settings/restart', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({})
+                    }).catch(() => {
+                        // 재시작으로 인해 연결이 끊어질 수 있음 (정상)
+                    });
+
+                    // 새 URL로 연결 대기
+                    setTimeout(() => {
+                        this.waitForServerRestart(newUrl);
+                    }, 3000);
+
+                } catch (error) {
+                    alert('❌ 서버 재시작 중 오류가 발생했습니다. 수동으로 재시작해주세요.');
+                }
+            }
+
+            async restartServer() {
+                if (!confirm('서버를 재시작하시겠습니까?\n\n연결이 잠시 끊어질 수 있습니다.')) {
+                    return;
+                }
+
+                const restartButton = document.getElementById('restart-server');
+                const originalText = restartButton.innerHTML;
+
+                try {
+                    restartButton.disabled = true;
+                    restartButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>재시작 중...';
+
+                    const response = await fetch('/api/settings/restart', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'}
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        // 재시작 안내 표시
+                        const alertDiv = document.getElementById('setup-status-alert');
+                        alertDiv.className = 'alert alert-info';
+                        alertDiv.innerHTML = `
+                            <div class="text-center">
+                                <div class="spinner-border text-primary mb-3" role="status">
+                                    <span class="visually-hidden">재시작 중...</span>
+                                </div>
+                                <h5>서버 재시작 중...</h5>
+                                <p class="mb-0">잠시만 기다려주세요. 자동으로 페이지가 새로고침됩니다.</p>
+                            </div>
+                        `;
+
+                        // 서버 재시작 대기 (5초 후 시작)
+                        setTimeout(() => {
+                            this.waitForServerRestart(window.location.href);
+                        }, 5000);
+
+                    } else {
+                        throw new Error(data.error || '재시작 실패');
+                    }
+                } catch (error) {
+                    // fetch 에러는 서버가 이미 재시작 중일 수 있음
+                    console.log('서버 재시작 시작됨, 대기 중...');
+
+                    // 재시작 안내 표시
+                    const alertDiv = document.getElementById('setup-status-alert');
+                    alertDiv.className = 'alert alert-info';
+                    alertDiv.innerHTML = `
+                        <div class="text-center">
+                            <div class="spinner-border text-primary mb-3" role="status">
+                                <span class="visually-hidden">재시작 중...</span>
+                            </div>
+                            <h5>서버 재시작 중...</h5>
+                            <p class="mb-0">잠시만 기다려주세요. 자동으로 페이지가 새로고침됩니다.</p>
+                        </div>
+                    `;
+
+                    // 서버 재시작 대기
+                    setTimeout(() => {
+                        this.waitForServerRestart(window.location.href);
+                    }, 5000);
+                }
+            }
+
+            async waitForServerRestart(newUrl, attempts = 0) {
+                const maxAttempts = 30;  // 30초간 대기
+
+                console.log(`[재시작 확인] 시도 ${attempts + 1}/${maxAttempts}`);
+
+                if (attempts >= maxAttempts) {
+                    alert('⚠️ 서버 재시작 확인에 시간이 걸리고 있습니다.\n\n페이지를 새로고침합니다.');
+                    window.location.href = newUrl;
+                    return;
+                }
+
+                try {
+                    // AbortController로 타임아웃 구현
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+                    const response = await fetch(newUrl + '/api/health', {
+                        method: 'GET',
+                        signal: controller.signal,
+                        cache: 'no-cache'
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        console.log('[재시작 확인] 서버 응답 성공!');
+
+                        // 서버 재시작 완료 - 간단한 알림 후 새로고침
+                        const alertDiv = document.getElementById('setup-status-alert');
+                        alertDiv.className = 'alert alert-success';
+                        alertDiv.innerHTML = `
+                            <div class="text-center">
+                                <i class="fas fa-check-circle" style="font-size: 2rem; color: #28a745;"></i>
+                                <h5 class="mt-2">✅ 서버 재시작 완료!</h5>
+                                <p class="mb-0">페이지를 새로고침합니다...</p>
+                            </div>
+                        `;
+
+                        setTimeout(() => {
+                            window.location.href = newUrl;
+                        }, 1500);
+                        return;
+                    } else {
+                        throw new Error('Server not ready');
+                    }
+                } catch (error) {
+                    console.log(`[재시작 확인] 실패 (${error.name}), 재시도...`);
+
+                    // 1초 후 재시도
+                    setTimeout(() => {
+                        this.waitForServerRestart(newUrl, attempts + 1);
+                    }, 1000);
+                }
+            }
+
+            async checkUpdateStatus() {
+                const statusElement = document.getElementById('update-status');
+                statusElement.textContent = '확인 중...';
+                statusElement.className = 'text-muted';
+            }
+
+            async checkForUpdates() {
+                const checkButton = document.getElementById('check-update');
+                const statusElement = document.getElementById('update-status');
+                const installButton = document.getElementById('install-update');
+                const infoDiv = document.getElementById('update-info');
+                const detailsDiv = document.getElementById('update-details');
+
+                checkButton.disabled = true;
+                checkButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>확인 중...';
+
+                statusElement.textContent = '업데이트 확인 중...';
+                statusElement.className = 'text-muted';
+
+                try {
+                    // 캐시 방지를 위한 타임스탬프 추가
+                    const timestamp = new Date().getTime();
+                    const response = await fetch(`/api/update/check?t=${timestamp}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        if (data.update_available) {
+                            statusElement.textContent = `새 버전 사용 가능: v${data.latest_version}`;
+                            statusElement.className = 'text-warning fw-bold';
+
+                            installButton.style.display = 'block';
+                            infoDiv.style.display = 'block';
+
+                            detailsDiv.innerHTML = `
+                                <strong>v${data.latest_version}</strong><br>
+                                ${data.features ? data.features.join('<br>') : '개선사항을 확인하세요.'}
+                            `;
+                        } else {
+                            statusElement.textContent = '최신 버전입니다';
+                            statusElement.className = 'text-success';
+
+                            installButton.style.display = 'none';
+                            infoDiv.style.display = 'none';
+                        }
+                    } else {
+                        throw new Error(data.error || '업데이트 확인 실패');
+                    }
+                } catch (error) {
+                    statusElement.textContent = `확인 실패: ${error.message}`;
+                    statusElement.className = 'text-danger';
+
+                    installButton.style.display = 'none';
+                    infoDiv.style.display = 'none';
+                } finally {
+                    checkButton.disabled = false;
+                    checkButton.innerHTML = '<i class="fas fa-search me-1"></i>업데이트 확인';
+                }
+            }
+
+            async installUpdate() {
+                if (!confirm('업데이트를 설치하시겠습니까?\\n\\n설치 중에는 시스템이 재시작됩니다.')) {
+                    return;
+                }
+
+                const installButton = document.getElementById('install-update');
+                const statusElement = document.getElementById('update-status');
+
+                installButton.disabled = true;
+                installButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>설치 중...';
+
+                statusElement.textContent = '업데이트 설치 중...';
+                statusElement.className = 'text-info';
+
+                try {
+                    const response = await fetch('/api/update/perform', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        alert('✅ 업데이트가 완료되었습니다.\\n\\n잠시 후 자동으로 새로고침됩니다.');
+
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 3000);
+                    } else {
+                        throw new Error(data.error || '업데이트 설치 실패');
+                    }
+                } catch (error) {
+                    alert(`❌ 업데이트 설치 실패: ${error.message}`);
+
+                    statusElement.textContent = `설치 실패: ${error.message}`;
+                    statusElement.className = 'text-danger';
+
+                    installButton.disabled = false;
+                    installButton.innerHTML = '<i class="fas fa-download me-1"></i>업데이트 설치';
+                }
+            }
+
+            // 로그 설정 로드
+            async loadLogSettings() {
+                try {
+                    const response = await fetch('/api/settings/logs/status');
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        const settings = data.current_settings;
+
+                        // 로그 설정 폼 채우기
+                        document.getElementById('log-enabled').checked = settings.enabled || true;
+                        document.getElementById('log-level').value = settings.log_level || 'INFO';
+                        document.getElementById('log-dir').value = settings.log_dir || 'logs';
+                        document.getElementById('log-max-size').value = settings.max_file_size_mb || 10;
+                        document.getElementById('log-backup-count').value = settings.backup_count || 3;
+                        document.getElementById('auto-updater-log').checked = settings.auto_updater_log_enabled || true;
+                        document.getElementById('auto-updater-separate').checked = settings.auto_updater_separate_file || false;
+
+                        // 로그 파일 정보 표시
+                        this.displayLogFiles(data.log_files, data.total_size);
+                    }
+                } catch (error) {
+                    console.error('로그 설정 로드 실패:', error);
+                }
+            }
+
+            // 로그 파일 정보 표시
+            displayLogFiles(logFiles, totalSize) {
+                const infoDiv = document.getElementById('log-files-info');
+                const listDiv = document.getElementById('log-files-list');
+
+                if (logFiles && logFiles.length > 0) {
+                    infoDiv.style.display = 'block';
+
+                    let html = '<div class="table-responsive">';
+                    html += '<table class="table table-sm table-striped">';
+                    html += '<thead><tr><th>파일명</th><th>크기</th><th>수정시간</th></tr></thead>';
+                    html += '<tbody>';
+
+                    logFiles.forEach(file => {
+                        html += `<tr>
+                            <td><code>${file.name}</code></td>
+                            <td>${file.size}</td>
+                            <td>${file.modified}</td>
+                        </tr>`;
+                    });
+
+                    html += '</tbody></table>';
+                    html += `<small class="text-muted">총 로그 크기: ${totalSize}</small>`;
+                    html += '</div>';
+
+                    listDiv.innerHTML = html;
+                } else {
+                    infoDiv.style.display = 'none';
+                }
+            }
+
+            // 로그 설정 저장
+            async saveLogSettings() {
+                const saveButton = document.getElementById('save-log-settings');
+                const originalText = saveButton.innerHTML;
+
+                try {
+                    saveButton.disabled = true;
+                    saveButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>저장 중...';
+
+                    // 로그 설정 데이터 수집
+                    const logSettings = {
+                        enabled: document.getElementById('log-enabled').checked,
+                        log_level: document.getElementById('log-level').value,
+                        log_dir: document.getElementById('log-dir').value,
+                        max_file_size_mb: parseInt(document.getElementById('log-max-size').value),
+                        backup_count: parseInt(document.getElementById('log-backup-count').value),
+                        auto_updater_log_enabled: document.getElementById('auto-updater-log').checked,
+                        auto_updater_separate_file: document.getElementById('auto-updater-separate').checked
+                    };
+
+                    // 입력값 검증
+                    if (logSettings.max_file_size_mb < 1 || logSettings.max_file_size_mb > 100) {
+                        throw new Error('최대 파일 크기는 1-100 MB 범위여야 합니다.');
+                    }
+                    if (logSettings.backup_count < 1 || logSettings.backup_count > 10) {
+                        throw new Error('백업 파일 수는 1-10 개 범위여야 합니다.');
+                    }
+
+                    // API 호출
+                    const response = await fetch('/api/settings/logs/update', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(logSettings)
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        saveButton.className = 'btn btn-success';
+                        saveButton.innerHTML = '<i class="fas fa-check me-2"></i>저장 완료!';
+
+                        // 로그 설정 새로고침
+                        setTimeout(() => {
+                            this.loadLogSettings();
+                        }, 500);
+
+                        // 성공 알림
+                        alert(`✅ 로그 설정이 저장되고 즉시 적용되었습니다!\n\n${data.message}`);
+                    } else {
+                        throw new Error(data.message || '알 수 없는 오류');
+                    }
+
+                } catch (error) {
+                    console.error('로그 설정 저장 실패:', error);
+                    saveButton.className = 'btn btn-danger';
+                    saveButton.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>저장 실패';
+                    alert(`❌ 로그 설정 저장 실패:\n${error.message}`);
+                } finally {
+                    // 버튼 복원 (2초 후)
+                    setTimeout(() => {
+                        saveButton.disabled = false;
+                        saveButton.className = 'btn btn-outline-primary';
+                        saveButton.innerHTML = originalText;
+                    }, 2000);
+                }
+            }
+
+            // Claude 계정 정보 로드
+            async loadClaudeAccountInfo() {
+                const loadingDiv = document.getElementById('claude-account-loading');
+                const errorDiv = document.getElementById('claude-account-error');
+                const infoDiv = document.getElementById('claude-account-info');
+                const refreshButton = document.getElementById('refresh-claude-info');
+
+                // 로딩 상태 표시
+                loadingDiv.style.display = 'block';
+                errorDiv.style.display = 'none';
+                infoDiv.style.display = 'none';
+
+                if (refreshButton) {
+                    refreshButton.disabled = true;
+                    const originalText = refreshButton.innerHTML;
+                    refreshButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>로딩 중...';
+                }
+
+                try {
+                    const response = await fetch('/api/claude/account');
+                    const data = await response.json();
+
+                    if (data.success) {
+                        // 성공: 계정 정보 표시
+                        const accountInfo = data.account_info;
+
+                        document.getElementById('claude-login-status').textContent =
+                            accountInfo.loggedIn ? '연결됨' : '연결 안됨';
+                        document.getElementById('claude-login-status').className =
+                            accountInfo.loggedIn ? 'badge bg-success' : 'badge bg-danger';
+
+                        document.getElementById('claude-api-provider').textContent =
+                            accountInfo.apiProvider || '-';
+                        document.getElementById('claude-auth-method').textContent =
+                            accountInfo.authMethod || '-';
+
+                        loadingDiv.style.display = 'none';
+                        errorDiv.style.display = 'none';
+                        infoDiv.style.display = 'block';
+                    } else {
+                        // 실패: 에러 메시지 표시
+                        throw new Error(data.error || 'Claude 계정 정보 조회 실패');
+                    }
+                } catch (error) {
+                    console.error('Claude 계정 정보 로드 실패:', error);
+
+                    document.getElementById('claude-error-message').textContent =
+                        error.message || 'Claude 계정 정보를 불러올 수 없습니다.';
+
+                    loadingDiv.style.display = 'none';
+                    errorDiv.style.display = 'block';
+                    infoDiv.style.display = 'none';
+                } finally {
+                    // 버튼 복원
+                    if (refreshButton) {
+                        refreshButton.disabled = false;
+                        refreshButton.innerHTML = '<i class="fas fa-sync me-1"></i>계정 정보 새로고침';
+                    }
+                }
+            }
+        }
+
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', () => {
+            new SettingsManager();
+        });
+    </script>
+</body>
+</html>

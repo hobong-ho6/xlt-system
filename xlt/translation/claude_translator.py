@@ -526,16 +526,16 @@ class ClaudeTranslator:
     # ===== Claude 통합 맞춤법 검사 + 번역 시스템 (v4.0) =====
 
     def _load_guide_terminology(self) -> str:
-        """용어집 로드 (우선순위: Line API → Google Sheets → guide.md → 하드코딩)"""
+        """용어집 로드 (우선순위: LINE API → Google Sheets → 하드코딩)"""
 
-        # 1순위: Line API 사용 시도
+        # 1순위: LINE API 사용 시도
         try:
             line_terminology = self._load_line_api_terminology()
             if line_terminology:
-                print("🌐 Line API 용어집 사용")
+                print("🌐 LINE API 용어집 사용")
                 return line_terminology
         except Exception as e:
-            print(f"⚠️ Line API 로드 실패: {e}")
+            print(f"⚠️ LINE API 로드 실패: {e}")
 
         # 2순위: Google Sheets 시스템 (기존)
         try:
@@ -546,16 +546,7 @@ class ClaudeTranslator:
         except Exception as e:
             print(f"⚠️ Google Sheets 로드 실패: {e}")
 
-        # 3순위: guide.md 방식 (기존)
-        try:
-            guide_terminology = self._load_guide_terminology_legacy()
-            if guide_terminology:
-                print("📋 guide.md 폴백 방식 사용")
-                return guide_terminology
-        except Exception as e:
-            print(f"⚠️ guide.md 로드 실패: {e}")
-
-        # 4순위: 하드코딩된 용어집 (최종 폴백)
+        # 3순위: 하드코딩된 용어집 (최종 폴백) - guide.md 제거됨
         print("🔄 하드코딩된 핵심 용어집 사용 (최종 폴백)")
         return self._get_fallback_terminology()
 
@@ -636,6 +627,7 @@ class ClaudeTranslator:
             return None
 
     def _load_guide_terminology_legacy(self) -> Optional[str]:
+        """기존 guide.md 방식 용어집 로드 - DEPRECATED: LINE API로 대체됨"""
         """기존 guide.md 방식 용어집 로드"""
         try:
             # v4.2 수정: config_path 안전하게 가져오기

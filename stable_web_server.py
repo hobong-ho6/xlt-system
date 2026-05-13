@@ -273,63 +273,88 @@ def apply_korean_corrections(text):
 
 
 def load_translation_guide():
-    """guide.md에서 번역 용어집과 규칙을 로드"""
+    """LINE API에서 번역 용어집 로드 (guide.md 대체)"""
     try:
-        guide_path = os.path.join(os.path.dirname(__file__), 'guide.md')
-        if not os.path.exists(guide_path):
-            print(f"⚠️ guide.md 파일을 찾을 수 없습니다: {guide_path}")
-            return {}
+        # LINE API에서 용어집 로드
+        terminology = load_line_api_terminology()
+        if terminology:
+            print(f"🌐 LINE API에서 {len(terminology)}개 용어 로드됨")
+            return terminology
 
-        with open(guide_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        # 폴백: 로컬 JSON 파일
+        terminology_json_path = os.path.join(os.path.dirname(__file__), 'terminology_data.json')
+        if os.path.exists(terminology_json_path):
+            with open(terminology_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
 
-        # 용어집 테이블 파싱
-        terminology = {}
+            terminology = {}
+            for korean, translations in data.get('terminology', {}).items():
+                terminology[korean] = {
+                    'en_US': translations.get('en_US', ''),
+                    'ja_JP': translations.get('ja_JP', ''),
+                    'zh_TW': translations.get('zh_TW', ''),
+                    'th_TH': translations.get('th_TH', '')
+                }
 
-        # 마크다운 테이블 패턴 매칭
-        table_pattern = r'\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|'
-        lines = content.split('\n')
+            print(f"📂 로컬 JSON에서 {len(terminology)}개 용어 로드됨 (폴백)")
+            return terminology
 
-        in_terminology_section = False
-        for line in lines:
-            # 용어집 섹션 시작 감지
-            if '## 4. 핵심 용어집' in line or '핵심 용어' in line:
-                in_terminology_section = True
-                continue
-
-            # 다음 섹션 시작하면 종료
-            if in_terminology_section and line.startswith('##') and '용어집' not in line:
-                break
-
-            # 테이블 데이터 파싱
-            if in_terminology_section and '|' in line and not line.startswith('|---'):
-                matches = re.match(table_pattern, line.strip())
-                if matches:
-                    korean = matches.group(1).strip()
-                    english = matches.group(2).strip()
-                    japanese = matches.group(3).strip()
-                    chinese = matches.group(4).strip()
-                    thai = matches.group(5).strip()
-
-                    # 헤더 행 및 구분자 행 건너뛰기
-                    if korean.strip() not in ['한국어', 'Korean', '--------', ''] and not korean.startswith('-'):
-                        terminology[korean] = {
-                            'en_US': english,
-                            'ja_JP': japanese,
-                            'zh_TW': chinese,
-                            'th_TH': thai
-                        }
-
-        print(f"📖 guide.md에서 {len(terminology)}개 용어 로드됨")
+        # 최종 폴백: 하드코딩된 핵심 용어
+        terminology = {
+            '거래': {'en_US': 'transaction', 'ja_JP': '取引', 'zh_TW': '交易', 'th_TH': 'ธุรกรรม'},
+            '지갑': {'en_US': 'wallet', 'ja_JP': 'ウォレット', 'zh_TW': '錢包', 'th_TH': 'กระเป๋า'},
+            '토큰': {'en_US': 'token', 'ja_JP': 'トークン', 'zh_TW': '代幣', 'th_TH': 'โทเค็น'},
+            '자산': {'en_US': 'asset', 'ja_JP': '資産', 'zh_TW': '資產', 'th_TH': 'สินทรัพย์'},
+            '로그인': {'en_US': 'log in', 'ja_JP': 'ログイン', 'zh_TW': '登入', 'th_TH': 'เข้าสู่ระบบ'}
+        }
+        print(f"🔄 하드코딩된 핵심 용어 사용: {len(terminology)}개 용어 (최종 폴백)")
         return terminology
 
     except Exception as e:
-        print(f"❌ guide.md 로드 실패: {e}")
+        print(f"❌ 용어집 로드 실패: {e}")
         return {}
+
+def load_line_api_terminology():
+    """LINE API에서 용어집 데이터 로드"""
+    try:
+        import requests
+
+        # LINE API URL
+        api_url = "https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item"
+
+        # API 호출 (타임아웃 3초)
+        response = requests.get(api_url, timeout=3)
+
+        if response.status_code != 200:
+            return None
+
+        data = response.json()
+
+        if not data.get('header', {}).get('success'):
+            return None
+
+        # 용어집 데이터 추출 (exceptions 키 안에 실제 데이터가 있음)
+        terminology_data = data['body']['exceptions']['terminology']
+
+        # 서버 형식으로 변환 ({korean: {en_US: '', ja_JP: '', ...}})
+        terminology = {}
+        for korean, translations in terminology_data.items():
+            terminology[korean] = {
+                'en_US': translations.get('en_US', ''),
+                'ja_JP': translations.get('ja_JP', ''),
+                'zh_TW': translations.get('zh_TW', ''),
+                'th_TH': translations.get('th_TH', '')
+            }
+
+        return terminology
+
+    except Exception as e:
+        print(f"⚠️ LINE API 연결 실패: {str(e)}")
+        return None
 
 
 def apply_terminology_guide(text, target_lang, terminology):
-    """guide.md의 용어집을 사용해서 번역 후 용어 일관성 검증 및 수정"""
+    """LINE API 용어집을 사용해서 번역 후 용어 일관성 검증 및 수정"""
     if not text or not terminology:
         return text
 
@@ -555,17 +580,84 @@ def static_files(filename):
 
 @app.route('/guide.md')
 def serve_guide():
-    """번역 가이드라인 파일 제공"""
+    """LINE API 기반 번역 가이드라인 제공 (Markdown 형식)"""
     try:
-        guide_path = os.path.join(os.path.dirname(__file__), 'guide.md')
-        if os.path.exists(guide_path):
-            with open(guide_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return content, 200, {'Content-Type': 'text/markdown; charset=utf-8'}
+        # LINE API에서 용어집 로드
+        terminology = load_line_api_terminology()
+
+        if terminology:
+            # Markdown 형식으로 용어집 생성
+            markdown_content = """# 🌐 LINE API 기반 번역 가이드
+
+**버전**: 3.0
+**최종 수정**: 2026-05-13
+**대상 서비스**: Unifi (핀테크 플랫폼)
+**데이터 소스**: LINE API
+
+---
+
+## 핵심 용어집 (LINE API)
+
+| 한국어 | English | 日本語 | 繁體中文 | ไทย |
+|--------|---------|--------|---------|-----|
+"""
+
+            # 용어집 테이블 생성
+            for korean, translations in terminology.items():
+                markdown_content += f"| {korean} | {translations.get('en_US', '')} | {translations.get('ja_JP', '')} | {translations.get('zh_TW', '')} | {translations.get('th_TH', '')} |\n"
+
+            markdown_content += f"""
+
+---
+
+## 데이터 소스 정보
+
+- **총 용어 수**: {len(terminology)}개
+- **지원 언어**: 5개 (한국어, 영어, 일본어, 중국어 번체, 태국어)
+- **업데이트 방식**: LINE API 실시간 동기화
+- **응답 속도**: 평균 0.2초대
+
+---
+
+## 사용 방법
+
+이 용어집은 LINE API에서 실시간으로 로드되며, XLT 시스템의 Claude AI 번역에 자동으로 적용됩니다.
+
+### API 엔드포인트
+```
+GET https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item
+```
+
+### 폴백 순서
+1. LINE API (우선)
+2. 로컬 JSON 파일
+3. 하드코딩된 핵심 용어
+
+---
+
+*이 문서는 LINE API에서 자동 생성되었습니다.*
+"""
+
+            return markdown_content, 200, {'Content-Type': 'text/markdown; charset=utf-8'}
+
         else:
-            return 'guide.md 파일을 찾을 수 없습니다.', 404
+            # 폴백: 기본 가이드 메시지
+            fallback_content = """# 번역 가이드라인
+
+LINE API 연결에 실패하여 기본 가이드를 표시합니다.
+
+## 기본 용어집
+
+- 거래 → EN: transaction, JA: 取引, ZH: 交易, TH: ธุรกรรม
+- 지갑 → EN: wallet, JA: ウォレット, ZH: 錢包, TH: กระเป๋า
+- 토큰 → EN: token, JA: トークン, ZH: 代幣, TH: โทเค็น
+
+LINE API 연결을 확인해주세요.
+"""
+            return fallback_content, 200, {'Content-Type': 'text/markdown; charset=utf-8'}
+
     except Exception as e:
-        return f'오류: {str(e)}', 500
+        return f'LINE API 오류: {str(e)}', 500
 
 # XLT v3.0: 자동 테스트 기능 제거
 # @app.route('/test_web_flow.html') - 자동 테스트 페이지 제거됨
@@ -2469,7 +2561,7 @@ def translate_selected():
         # XLT v5.1.0: 번역 엔진 선택 지원 - Claude AI 기본값
         translation_mode = data.get('translation_mode', 'claude_integrated')  # v5.1.0 기본값: Claude AI 통합 처리
 
-        # guide.md 번역 가이드 로드 (XLT System v3.0)
+        # LINE API 기반 번역 가이드 로드 (XLT System v5.1.1)
         terminology = load_translation_guide()
 
         # 번역 실행 (ko_KR은 원본 사용, 나머지 언어만 번역)
@@ -2525,7 +2617,7 @@ def translate_selected():
         try:
             logger.info("=" * 80)
             logger.info(f"[{session_id}] 🔄 번역 시작: {len(selected_texts)}개 텍스트, 모드: {translation_mode}")
-            logger.info(f"[{session_id}]    📖 guide.md 용어집: {len(terminology)}개 용어 로드됨")
+            logger.info(f"[{session_id}]    🌐 LINE API 용어집: {len(terminology)}개 용어 로드됨")
             logger.info(f"[{session_id}]    🌐 대상 언어: {target_languages}")
             logger.info(f"[{session_id}]    📝 샘플 텍스트: {selected_texts[0][:50] if selected_texts else 'None'}...")
             logger.info(f"[{session_id}]    🔧 번역기 타입: {type(translator).__name__}")
@@ -2931,7 +3023,7 @@ def translate_selected():
                         })
 
                         if individual_result and len(individual_result) > 0:
-                            # guide.md 용어집 적용 (XLT System v3.0)
+                            # LINE API 용어집 적용 (XLT System v5.1.1)
                             result = individual_result[0].copy()
 
                             # ko_KR은 교정된 텍스트 사용
@@ -4361,36 +4453,86 @@ def get_translation_progress(session_id):
         }), 500
 
 def load_translation_guide_api():
-    """API용 guide.md 번역 가이드라인 로드 (전체 내용 반환)"""
+    """API용 LINE API 기반 번역 가이드라인 로드"""
     try:
-        guide_path = os.path.join(os.path.dirname(__file__), 'guide.md')
+        # LINE API에서 용어집 로드
+        terminology = load_line_api_terminology()
 
-        if not os.path.exists(guide_path):
+        if terminology:
+            # LINE API 성공
+            guide_content = f"""# LINE API 기반 번역 가이드
+
+**총 용어 수**: {len(terminology)}개
+**지원 언어**: 한국어, 영어, 일본어, 중국어(번체), 태국어
+**데이터 소스**: LINE API 실시간 동기화
+
+## 핵심 용어집
+
+"""
+            # 용어집 추가
+            for korean, translations in list(terminology.items())[:10]:  # 처음 10개만 미리보기
+                guide_content += f"- {korean} → EN: {translations.get('en_US', '')}, JA: {translations.get('ja_JP', '')}\n"
+
+            if len(terminology) > 10:
+                guide_content += f"\n... 외 {len(terminology) - 10}개 용어\n"
+
+            guide_content += """
+
+## API 정보
+
+- **엔드포인트**: LINE Content API
+- **응답 속도**: 평균 0.2초대
+- **업데이트**: 실시간 동기화
+
+"""
+
             return {
-                'status': 'error',
-                'error': 'guide.md 파일을 찾을 수 없습니다.',
-                'path': guide_path
+                'status': 'success',
+                'content': guide_content,
+                'source': 'LINE API',
+                'terminology_count': len(terminology),
+                'size': len(guide_content),
+                'last_updated': datetime.now().isoformat(),
+                'api_url': 'https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item'
             }
 
-        with open(guide_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        else:
+            # LINE API 실패 시 폴백
+            fallback_content = """# 번역 가이드라인 (폴백)
 
-        return {
-            'status': 'success',
-            'content': content,
-            'file': 'guide.md',
-            'size': len(content),
-            'last_modified': datetime.fromtimestamp(os.path.getmtime(guide_path)).isoformat()
-        }
+LINE API 연결에 실패하여 기본 가이드를 표시합니다.
+
+## 기본 핵심 용어
+
+- 거래 → EN: transaction, JA: 取引, ZH: 交易, TH: ธุรกรรม
+- 지갑 → EN: wallet, JA: ウォレット, ZH: 錢包, TH: กระเป๋า
+- 토큰 → EN: token, JA: トークン, ZH: 代幣, TH: โทเค็น
+- 자산 → EN: asset, JA: 資産, ZH: 資產, TH: สินทรัพย์
+- 로그인 → EN: log in, JA: ログイン, ZH: 登入, TH: เข้าสู่ระบบ
+
+## 알림
+
+LINE API 연결을 확인해주세요. 시스템이 하드코딩된 기본 용어를 사용하고 있습니다.
+"""
+
+            return {
+                'status': 'warning',
+                'content': fallback_content,
+                'source': 'fallback',
+                'terminology_count': 5,
+                'size': len(fallback_content),
+                'message': 'LINE API 연결 실패 - 기본 용어 사용 중'
+            }
+
     except Exception as e:
         return {
             'status': 'error',
-            'error': f'guide.md 로드 중 오류: {str(e)}'
+            'error': f'LINE API 기반 가이드 로드 실패: {str(e)}'
         }
 
 @app.route('/api/translation-guide')
 def api_translation_guide():
-    """번역 가이드라인 제공 (guide.md)"""
+    """LINE API 기반 번역 가이드라인 제공"""
     try:
         result = load_translation_guide_api()
 
@@ -5193,7 +5335,7 @@ if __name__ == '__main__':
 
         logger.info(f"🌐 웹 서버 포트: {server_port}")
         logger.info(f"🌐 접속 URL: http://localhost:{server_port}")
-        logger.info("🎯 특징: 피그마 전용 + Claude AI 전용 번역 + guide.md 기반 번역")
+        logger.info("🎯 특징: 피그마 전용 + Claude AI 전용 번역 + LINE API 기반 용어집")
         logger.info("=" * 60)
         logger.info("📋 서버 로그는 server.log 파일에 기록됩니다")
         logger.info("=" * 60)

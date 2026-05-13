@@ -526,7 +526,7 @@ class ClaudeTranslator:
     # ===== Claude 통합 맞춤법 검사 + 번역 시스템 (v4.0) =====
 
     def _load_guide_terminology(self) -> str:
-        """용어집 로드 (우선순위: LINE API → Google Sheets → 하드코딩)"""
+        """용어집 로드 (우선순위: LINE API → 하드코딩)"""
 
         # 1순위: LINE API 사용 시도
         try:
@@ -537,16 +537,7 @@ class ClaudeTranslator:
         except Exception as e:
             print(f"⚠️ LINE API 로드 실패: {e}")
 
-        # 2순위: Google Sheets 시스템 (기존)
-        try:
-            google_sheets_terminology = self._load_google_sheets_terminology()
-            if google_sheets_terminology:
-                print("📊 Google Sheets 용어집 사용")
-                return google_sheets_terminology
-        except Exception as e:
-            print(f"⚠️ Google Sheets 로드 실패: {e}")
-
-        # 3순위: 하드코딩된 용어집 (최종 폴백) - guide.md 제거됨
+        # 2순위: 하드코딩된 용어집 (최종 폴백) - Google Sheets 제거됨
         print("🔄 하드코딩된 핵심 용어집 사용 (최종 폴백)")
         return self._get_fallback_terminology()
 
@@ -601,30 +592,7 @@ class ClaudeTranslator:
             print(f"❌ Line API 연결 실패: {str(e)}")
             return None
 
-    def _load_google_sheets_terminology(self) -> Optional[str]:
-        """Google Sheets 용어집 로드 (기존 시스템)"""
-        try:
-            # Google Sheets 시스템 확인
-            if not hasattr(self.config, 'google_sheets_enabled') or not self.config.google_sheets_enabled:
-                return None
-
-            from ..terminology import GoogleSheetsTerminology
-
-            terminology_system = GoogleSheetsTerminology(self.config)
-            if not terminology_system.is_available():
-                return None
-
-            terminology_data = terminology_system.load_terminology()
-            if terminology_data:
-                claude_prompt = terminology_system.format_for_claude_prompt(terminology_data, limit=50)
-                print(f"✅ Google Sheets 용어집 로드 성공: {len(terminology_data)}개 용어")
-                return claude_prompt
-
-            return None
-
-        except Exception as e:
-            print(f"❌ Google Sheets 연결 실패: {str(e)}")
-            return None
+    # Google Sheets 기능 제거됨 - LINE API로 완전 대체
 
     def _load_guide_terminology_legacy(self) -> Optional[str]:
         """기존 guide.md 방식 용어집 로드 - DEPRECATED: LINE API로 대체됨"""

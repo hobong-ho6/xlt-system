@@ -246,16 +246,58 @@
       },
       "note": "브랜드명 - 그대로 유지",
       "active": true
+    },
+    {
+      "id": "6",
+      "pattern": "*USDT*",
+      "exception_type": "crypto",
+      "translations": {
+        "ko_KR": "USDT",
+        "en_US": "USDT",
+        "ja_JP": "USDT",
+        "zh_TW": "USDT",
+        "th_TH": "USDT"
+      },
+      "note": "암호화폐 - 그대로 유지",
+      "active": true
+    },
+    {
+      "id": "7",
+      "pattern": "*IDRP*",
+      "exception_type": "crypto",
+      "translations": {
+        "ko_KR": "IDRP",
+        "en_US": "IDRP",
+        "ja_JP": "IDRP",
+        "zh_TW": "IDRP",
+        "th_TH": "IDRP"
+      },
+      "note": "암호화폐 - 그대로 유지",
+      "active": true
+    },
+    {
+      "id": "8",
+      "pattern": "*JPYC*",
+      "exception_type": "crypto",
+      "translations": {
+        "ko_KR": "JPYC",
+        "en_US": "JPYC",
+        "ja_JP": "JPYC",
+        "zh_TW": "JPYC",
+        "th_TH": "JPYC"
+      },
+      "note": "암호화폐 - 그대로 유지",
+      "active": true
     }
   ],
   "metadata": {
-    "version": "2.0",
+    "version": "2.1",
     "last_updated": "2026-05-13",
     "total_terms": 24,
-    "total_exceptions": 5,
+    "total_exceptions": 8,
     "source": "guide.md",
     "languages": ["ko_KR", "en_US", "ja_JP", "zh_TW", "th_TH"],
     "created_at": "2026-05-13T15:30:00+09:00",
-    "description": "XLT System Unifi 용어집 - guide.md 기반 JSON 버전"
+    "description": "XLT System Unifi 용어집 - guide.md 기반 JSON 버전 (암호화폐 예외 추가)"
   }
 }

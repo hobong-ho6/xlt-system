@@ -1,0 +1,12 @@
+{
+  "figma_token": "YOUR_FIGMA_PERSONAL_ACCESS_TOKEN",
+  "timeout": 30,
+  "max_retries": 3,
+  "default_format": "png",
+  "default_scale": 2,
+  "notes": {
+    "token_setup": "Figma → Settings → Personal Access Tokens → Generate new token",
+    "permissions": "Read files and comments permission required",
+    "optional": "This file is optional - OCR works with image upload if no token provided"
+  }
+}

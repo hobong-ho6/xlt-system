@@ -526,7 +526,117 @@ class ClaudeTranslator:
     # ===== Claude 통합 맞춤법 검사 + 번역 시스템 (v4.0) =====
 
     def _load_guide_terminology(self) -> str:
-        """guide.md에서 78개 용어집 로드"""
+        """용어집 로드 (우선순위: Line API → Google Sheets → guide.md → 하드코딩)"""
+
+        # 1순위: Line API 사용 시도
+        try:
+            line_terminology = self._load_line_api_terminology()
+            if line_terminology:
+                print("🌐 Line API 용어집 사용")
+                return line_terminology
+        except Exception as e:
+            print(f"⚠️ Line API 로드 실패: {e}")
+
+        # 2순위: Google Sheets 시스템 (기존)
+        try:
+            google_sheets_terminology = self._load_google_sheets_terminology()
+            if google_sheets_terminology:
+                print("📊 Google Sheets 용어집 사용")
+                return google_sheets_terminology
+        except Exception as e:
+            print(f"⚠️ Google Sheets 로드 실패: {e}")
+
+        # 3순위: guide.md 방식 (기존)
+        try:
+            guide_terminology = self._load_guide_terminology_legacy()
+            if guide_terminology:
+                print("📋 guide.md 폴백 방식 사용")
+                return guide_terminology
+        except Exception as e:
+            print(f"⚠️ guide.md 로드 실패: {e}")
+
+        # 4순위: 하드코딩된 용어집 (최종 폴백)
+        print("🔄 하드코딩된 핵심 용어집 사용 (최종 폴백)")
+        return self._get_fallback_terminology()
+
+    def _load_line_api_terminology(self) -> Optional[str]:
+        """Line API에서 용어집 로드"""
+        try:
+            import requests
+
+            # Line API URL
+            api_url = "https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item"
+
+            # API 호출 (타임아웃 5초)
+            response = requests.get(api_url, timeout=5)
+
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+
+            if not data.get('header', {}).get('success'):
+                return None
+
+            # 용어집 데이터 추출 (exceptions 키 안에 실제 데이터가 있음)
+            terminology_data = data['body']['exceptions']['terminology']
+
+            # Claude 프롬프트 형식으로 변환
+            lines = []
+            required_langs = ['ko_KR', 'en_US', 'ja_JP', 'zh_TW', 'th_TH']
+            processed_count = 0
+
+            for korean_term, translations in terminology_data.items():
+                if processed_count >= 50:  # 프롬프트 길이 제한
+                    break
+
+                # 5개 언어 모두 있는지 확인
+                if all(lang in translations for lang in required_langs):
+                    line = (f'- "{korean_term}" → '
+                           f'EN: "{translations["en_US"]}", '
+                           f'JA: "{translations["ja_JP"]}", '
+                           f'ZH: "{translations["zh_TW"]}", '
+                           f'TH: "{translations["th_TH"]}"')
+                    lines.append(line)
+                    processed_count += 1
+
+            if lines:
+                print(f"✅ Line API 용어집 로드 성공: {processed_count}개 용어")
+                return '\n'.join(lines)
+
+            return None
+
+        except Exception as e:
+            print(f"❌ Line API 연결 실패: {str(e)}")
+            return None
+
+    def _load_google_sheets_terminology(self) -> Optional[str]:
+        """Google Sheets 용어집 로드 (기존 시스템)"""
+        try:
+            # Google Sheets 시스템 확인
+            if not hasattr(self.config, 'google_sheets_enabled') or not self.config.google_sheets_enabled:
+                return None
+
+            from ..terminology import GoogleSheetsTerminology
+
+            terminology_system = GoogleSheetsTerminology(self.config)
+            if not terminology_system.is_available():
+                return None
+
+            terminology_data = terminology_system.load_terminology()
+            if terminology_data:
+                claude_prompt = terminology_system.format_for_claude_prompt(terminology_data, limit=50)
+                print(f"✅ Google Sheets 용어집 로드 성공: {len(terminology_data)}개 용어")
+                return claude_prompt
+
+            return None
+
+        except Exception as e:
+            print(f"❌ Google Sheets 연결 실패: {str(e)}")
+            return None
+
+    def _load_guide_terminology_legacy(self) -> Optional[str]:
+        """기존 guide.md 방식 용어집 로드"""
         try:
             # v4.2 수정: config_path 안전하게 가져오기
             config_path = getattr(self.config, 'config_path', '') or os.getcwd()
@@ -570,19 +680,24 @@ class ClaudeTranslator:
                         break
 
                 if terminology_lines:
+                    print(f"✅ guide.md 용어집 로드 성공: {len(terminology_lines)}개 용어")
                     return '\n'.join(terminology_lines[:50])  # 프롬프트 길이 제한을 위해 50개만
+
+            return None
 
         except Exception as e:
             print(f"⚠️ guide.md 로드 실패: {e}")
+            return None
 
-        # 폴백: 하드코딩된 핵심 용어집 (기존)
+    def _get_fallback_terminology(self) -> str:
+        """하드코딩된 핵심 용어집 (최종 폴백)"""
         return """- "거래" → EN: "transaction", JA: "取引", ZH: "交易", TH: "ธุรกรรม"
 - "지갑" → EN: "wallet", JA: "ウォレット", ZH: "錢包", TH: "กระเป๋า"
 - "토큰" → EN: "token", JA: "トークン", ZH: "代幣", TH: "โทเค็น"
 - "자산" → EN: "asset", JA: "資産", ZH: "資產", TH: "สินทรัพย์"
 - "송금" → EN: "send", JA: "送金", ZH: "轉帳", TH: "ส่ง"
 - "예치" → EN: "deposit", JA: "預入", ZH: "存入", TH: "ฝาก"
-- "출금" → EN: "withdraw", JA: "出金", ZH: "提領", TH: "ถอน"
+- "출금" → EN: "withdraw", JA: "出금", ZH: "提領", TH: "ถอน"
 - "교환" → EN: "swap", JA: "スワップ", ZH: "交換", TH: "แลกเปลี่ยน"
 - "이자" → EN: "interest", JA: "利息", ZH: "利息", TH: "ดอกเบี้ย"
 - "로그인" → EN: "log in", JA: "ログイン", ZH: "登入", TH: "เข้าสู่ระบบ"

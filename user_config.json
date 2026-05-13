@@ -13,11 +13,11 @@
   "logging": {
     "enabled": true,
     "log_dir": "logs",
-    "log_level": "DEBUG",
+    "log_level": "INFO",
     "max_file_size_mb": 10,
     "backup_count": 3,
     "auto_updater_log_enabled": true,
-    "auto_updater_separate_file": true
+    "auto_updater_separate_file": false
   },
   "bareun_api_key": "koba-J4OURKA-25EEKQI-VVMMIJI-JGOUYCY"
 }

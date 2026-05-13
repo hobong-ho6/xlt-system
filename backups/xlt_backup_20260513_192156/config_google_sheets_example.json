@@ -1,0 +1,10 @@
+{
+  "google_sheets_enabled": true,
+  "google_sheets_id": "YOUR_SPREADSHEET_ID_HERE",
+  "google_sheets_credentials": "credentials/google_sheets_service_account.json",
+  "terminology_cache_ttl": 7200,
+  "terminology_sheet_name": "Terminology",
+  "exceptions_sheet_name": "Exceptions",
+  "metadata_sheet_name": "Metadata",
+  "fallback_to_guide_md": true
+}

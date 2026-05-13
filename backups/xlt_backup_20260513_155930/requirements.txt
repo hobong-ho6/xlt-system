@@ -1,0 +1,35 @@
+# XLT System v3.1 - Web Interface Dependencies (호환성 최적화)
+
+# 핵심 의존성 (버전 호환성 보장)
+numpy<2
+pillow==9.5.0
+
+# 웹 인터페이스
+flask==2.3.3
+requests==2.31.0
+
+# 번역 및 OCR
+easyocr==1.7.0
+googletrans==4.0.0rc1
+
+# 파일 처리
+openpyxl==3.1.2
+
+# 시스템 유틸리티
+psutil==7.2.2
+
+# GUI 라이브러리 (시스템 트레이용)
+pystray==0.19.4
+
+# 머신러닝 (EasyOCR 의존성)
+torch
+torchvision
+
+# Pandas (Unifi 번역 시스템용)
+pandas
+
+# Google Sheets API (용어집 관리용 - v5.1.1 추가)
+google-auth==2.23.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+google-api-python-client==2.100.0

@@ -303,12 +303,17 @@ def setup_tray_notifications(auto_updater: AutoUpdateManager):
 # 전역 자동 업데이터 인스턴스
 _global_auto_updater = None
 
-def get_auto_updater() -> AutoUpdateManager:
+def get_auto_updater(enable_tray: bool = True) -> AutoUpdateManager:
     """전역 자동 업데이터 인스턴스 가져오기"""
     global _global_auto_updater
     if _global_auto_updater is None:
         _global_auto_updater = AutoUpdateManager()
-        setup_tray_notifications(_global_auto_updater)
+        if enable_tray:
+            try:
+                setup_tray_notifications(_global_auto_updater)
+            except Exception as e:
+                # 웹서버 환경이나 GUI 없는 환경에서는 트레이 알림 건너뛰기
+                print(f"⚠️ 트레이 알림 초기화 건너뜀: {str(e)}")
     return _global_auto_updater
 
 

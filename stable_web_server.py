@@ -152,30 +152,45 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'bmp', 'tiff', 'webp', 'gif'}
 
 # XLT 시스템 초기화
 pipeline = None
+config = None
 updater = None
+auto_updater = None
+
+# 메인 시스템 초기화 (파이프라인)
 try:
     from xlt import XLTPipeline, XLTConfig
-    from xlt.utils.updater import XLTUpdater
-    from xlt.utils.auto_updater import get_auto_updater
 
     config = XLTConfig()
     pipeline = XLTPipeline(config)
     pipeline.initialize()  # 🔧 명시적으로 초기화 호출
-
-    # 업데이터 초기화
-    updater = XLTUpdater()
-
-    # 자동 업데이터 초기화 (웹 서버 모드에서는 백그라운드만)
-    auto_updater = get_auto_updater()
-    # 웹 서버에서는 트레이가 없으므로 백그라운드만 실행
-    auto_updater.start_background_check()
-    print("🔍 웹 서버 자동 업데이트 감지 활성화")
 
     print("✅ XLT 시스템 초기화 완료")
     print(f"   📝 입력 처리기: {len(pipeline.input_processors)}개 등록")
     print(f"   📋 처리기 종류: {list(pipeline.input_processors.keys())}")
 except Exception as e:
     print(f"❌ XLT 시스템 초기화 실패: {e}")
+
+# 업데이터 초기화 (독립적으로 실행)
+try:
+    from xlt.utils.updater import XLTUpdater
+    updater = XLTUpdater()
+    print("✅ 업데이터 초기화 완료")
+except Exception as e:
+    print(f"⚠️ 업데이터 초기화 실패: {e}")
+    print("   수동 업데이트만 가능합니다.")
+
+# 자동 업데이터 초기화 (독립적으로 실행)
+try:
+    from xlt.utils.auto_updater import get_auto_updater
+
+    # 자동 업데이터 초기화 (웹 서버 모드에서는 백그라운드만)
+    auto_updater = get_auto_updater(enable_tray=False)  # 웹서버에서는 트레이 비활성화
+    # 웹 서버에서는 트레이가 없으므로 백그라운드만 실행
+    auto_updater.start_background_check()
+    print("🔍 웹 서버 자동 업데이트 감지 활성화")
+except Exception as e:
+    print(f"⚠️ 자동 업데이터 초기화 실패: {e}")
+    print("   업데이트 확인은 수동으로만 가능합니다.")
 
 
 def cleanup_old_figma_images():

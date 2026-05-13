@@ -32,7 +32,10 @@ def favicon():
     return '', 204  # No Content
 
 # 로깅 설정 (파일 + 콘솔)
-log_file = Path(__file__).parent / "server.log"
+# logs 디렉토리 생성
+logs_dir = Path(__file__).parent / "logs"
+logs_dir.mkdir(exist_ok=True)
+log_file = logs_dir / "server.log"
 log_handler = RotatingFileHandler(log_file, maxBytes=10*1024*1024, backupCount=3)  # 10MB, 3개 백업
 log_handler.setLevel(logging.INFO)
 log_formatter = logging.Formatter(
@@ -4621,7 +4624,7 @@ def process_excel_translation_from_content(file_content, filename, translation_e
 
             # server.log 파일에도 기록
             try:
-                with open('server.log', 'a', encoding='utf-8') as f:
+                with open(log_file, 'a', encoding='utf-8') as f:
                     f.write(log_entry + '\n')
             except:
                 pass  # 로그 파일 쓰기 실패해도 진행
@@ -4796,7 +4799,7 @@ def translate_with_claude_integrated(translation_tasks, session_id=None):
 
         # server.log 파일에도 기록
         try:
-            with open('server.log', 'a', encoding='utf-8') as f:
+            with open(log_file, 'a', encoding='utf-8') as f:
                 f.write(log_entry + '\n')
         except:
             pass  # 로그 파일 쓰기 실패해도 진행

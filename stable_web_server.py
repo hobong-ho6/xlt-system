@@ -4580,6 +4580,14 @@ def api_terminology_test():
     try:
         print("🔍 LINE API 용어집 테스트 시작")
 
+        # UnifiTranslator 임포트 및 초기화
+        from xlt.translation.unifi_translator import UnifiTranslator
+        from xlt.core.config import XLTConfig
+
+        # 설정이 없는 경우 기본 설정 사용
+        if 'config' not in globals():
+            config = XLTConfig()
+
         # UnifiTranslator를 사용해서 LINE API 용어집 테스트
         unifi_translator = UnifiTranslator(config)
 

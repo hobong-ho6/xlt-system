@@ -1,6 +1,6 @@
 {
   "name": "XLT System",
-  "version": "5.1.10",
+  "version": "5.1.11",
   "build": "2026-05-14",
   "installation_type": "git",
   "priority": "important",
@@ -26,6 +26,7 @@
     "⚠️ 서비스 유형 감지 및 표시 - LINE Proxy vs 실제 Claude.ai 구분",
     "🛠️ Claude 계정 정보 표시 문제 해결 - JavaScript 구문 오류 수정으로 정상 표시",
     "⚙️ Claude 계정 정보 확인 기능 - 설정 페이지에서 현재 연결된 Claude 계정 정보 실시간 확인",
+    "🔍 LINE API 전체 데이터 출력 기능 - Exceptions 규칙 8개 + 메타데이터 + 전체 JSON 응답 (7,693자) 완전 표시",
     "📚 용어집 전체 리스트 표시 기능 추가 - 설정 페이지에서 전체 25개 용어를 5개 언어로 완전 표시",
     "🔧 LINE API 응답 구조 파싱 완전 해결 - body.exceptions.terminology 형태 정식 지원으로 용어집 관리 기능 100% 정상화",
     "🔥 Claude 품질 검증 시스템 (85점→95점 목표) - 2단계 Claude 워크플로우",

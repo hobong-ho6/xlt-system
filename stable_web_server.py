@@ -4617,11 +4617,24 @@ def api_terminology_test():
                 'error': f'Config 생성 실패: {str(e)}'
             }), 500
 
-        # Step 3: UnifiTranslator 초기화
+        # Step 3: UnifiTranslator 초기화 및 LINE API 응답 저장
         try:
             print("🔧 UnifiTranslator 초기화 시도...")
             unifi_translator = UnifiTranslator(test_config)
             print("✅ UnifiTranslator 초기화 성공")
+
+            # LINE API 원본 응답 가져오기
+            raw_api_response = None
+            try:
+                import requests
+                api_url = "https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item"
+                response = requests.get(api_url, timeout=10)
+                if response.status_code == 200:
+                    raw_api_response = response.json()
+                    print("✅ LINE API 원본 응답 수집 완료")
+            except Exception as raw_e:
+                print(f"⚠️ LINE API 원본 응답 수집 실패: {raw_e}")
+
         except Exception as e:
             print(f"❌ UnifiTranslator 초기화 실패: {e}")
             return jsonify({
@@ -4658,6 +4671,35 @@ def api_terminology_test():
             if i < 3:
                 sample_terms.append(term_data)
 
+        # exceptions 및 metadata 추출
+        exceptions_data = []
+        metadata = {}
+
+        if raw_api_response:
+            try:
+                exceptions_section = raw_api_response.get('body', {}).get('exceptions', {})
+
+                # metadata 추출
+                metadata = exceptions_section.get('metadata', {})
+
+                # exceptions 배열 추출
+                exceptions_array = exceptions_section.get('exceptions', [])
+                for exc in exceptions_array:
+                    exceptions_data.append({
+                        'id': exc.get('id', ''),
+                        'pattern': exc.get('pattern', ''),
+                        'note': exc.get('note', ''),
+                        'exception_type': exc.get('exception_type', ''),
+                        'active': exc.get('active', False),
+                        'translations': exc.get('translations', {})
+                    })
+
+                print(f"✅ Exceptions 추출 완료: {len(exceptions_data)}개")
+                print(f"✅ Metadata 추출 완료: {len(metadata)}개 필드")
+
+            except Exception as parse_e:
+                print(f"⚠️ Exceptions 파싱 실패: {parse_e}")
+
         print(f"✅ LINE API 용어집 테스트 성공: {terminology_count}개 용어 로드됨")
 
         return jsonify({
@@ -4666,6 +4708,10 @@ def api_terminology_test():
             'terminology_count': terminology_count,
             'sample_terms': sample_terms,
             'all_terms': all_terms,
+            'exceptions_count': len(exceptions_data),
+            'exceptions': exceptions_data,
+            'metadata': metadata,
+            'raw_api_response': raw_api_response,
             'api_url': 'https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item'
         })
 

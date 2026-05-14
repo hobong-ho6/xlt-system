@@ -77,6 +77,13 @@ class XLTUpdater:
 
     def get_current_version(self) -> Optional[Dict[str, str]]:
         """현재 로컬 버전 정보 조회 (설치 방식 자동 감지)"""
+        # 버전 정보 캐시 새로고침
+        try:
+            from .version_manager import get_version_manager
+            vm = get_version_manager()
+            vm.refresh_cache()
+        except:
+            pass
         # 1단계: Git 저장소 우선 확인 (개발 환경)
         try:
             os.chdir(self.project_root)

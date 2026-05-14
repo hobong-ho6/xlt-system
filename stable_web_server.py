@@ -79,24 +79,43 @@ def options_handler(path=None):
 # 템플릿 컨텍스트 프로세서 - 모든 템플릿에서 버전 정보 사용 가능
 @app.context_processor
 def inject_version_info():
-    """모든 템플릿에 버전 정보 주입"""
+    """모든 템플릿에 버전 정보 주입 (통합 version_info 객체)"""
     try:
         from xlt.utils.version_manager import get_version_manager
         vm = get_version_manager()
+        vm.refresh_cache()  # 항상 최신 정보 보장
+
+        version_info = vm.get_version_info()
+
         return {
-            'version': vm.get_version(),  # v5.0.6
-            'version_number': vm.get_version_number(),  # 5.0.6
-            'full_name': vm.get_full_name(),  # XLT System v5.0.6
-            'build_date': vm.get_build_date()  # 2026-05-06
+            'version_info': {
+                'name': version_info.get('name', 'XLT System'),
+                'version': vm.get_version_number(),  # 5.1.6 (v 없이)
+                'full_version': vm.get_version(),    # v5.1.6 (v 포함)
+                'build': vm.get_build_date(),
+                'features': version_info.get('features', [])
+            },
+            # 하위 호환성을 위한 개별 변수들
+            'version': vm.get_version(),
+            'version_number': vm.get_version_number(),
+            'full_name': vm.get_full_name(),
+            'build_date': vm.get_build_date()
         }
     except Exception as e:
         # 폴백: 하드코딩된 버전 (안전장치)
         print(f"⚠️ 버전 정보 로드 실패, 폴백 사용: {e}")
         return {
-            'version': 'v5.0.6',
-            'version_number': '5.0.6',
-            'full_name': 'XLT System v5.0.6',
-            'build_date': '2026-05-06'
+            'version_info': {
+                'name': 'XLT System',
+                'version': '5.1.6',
+                'full_version': 'v5.1.6',
+                'build': '2026-05-14',
+                'features': []
+            },
+            'version': 'v5.1.6',
+            'version_number': '5.1.6',
+            'full_name': 'XLT System v5.1.6',
+            'build_date': '2026-05-14'
         }
 
 # XLT v3.0: 로그 기능 제거 - 하지만 변수는 유지 (오류 방지)
@@ -4243,6 +4262,15 @@ def api_health():
 def api_update_check():
     """업데이트 확인 API (v5.0.6 자동화 시스템 감지 포함)"""
     try:
+        # 버전 정보 캐시 새로고침 (최신 정보 보장)
+        try:
+            from xlt.utils.version_manager import get_version_manager
+            vm = get_version_manager()
+            vm.refresh_cache()
+            print("🔄 버전 정보 캐시 새로고침 완료")
+        except Exception as e:
+            print(f"⚠️ 버전 캐시 새로고침 실패: {e}")
+
         # v5.0.6 자동화 시스템 존재 여부 확인
         auto_update_available = False
         try:

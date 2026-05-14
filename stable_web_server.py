@@ -4580,16 +4580,54 @@ def api_terminology_test():
     try:
         print("🔍 LINE API 용어집 테스트 시작")
 
-        # UnifiTranslator 임포트 및 초기화
-        from xlt.translation.unifi_translator import UnifiTranslator
-        from xlt.core.config import XLTConfig
+        # Step 1: 모듈 임포트
+        try:
+            from xlt.translation.unifi_translator import UnifiTranslator
+            print("✅ UnifiTranslator 임포트 성공")
+        except ImportError as e:
+            print(f"❌ UnifiTranslator 임포트 실패: {e}")
+            return jsonify({
+                'status': 'error',
+                'error': f'UnifiTranslator 임포트 실패: {str(e)}'
+            }), 500
 
-        # 설정이 없는 경우 기본 설정 사용
-        if 'config' not in globals():
-            config = XLTConfig()
+        try:
+            from xlt.core.config import XLTConfig
+            print("✅ XLTConfig 임포트 성공")
+        except ImportError as e:
+            print(f"❌ XLTConfig 임포트 실패: {e}")
+            return jsonify({
+                'status': 'error',
+                'error': f'XLTConfig 임포트 실패: {str(e)}'
+            }), 500
 
-        # UnifiTranslator를 사용해서 LINE API 용어집 테스트
-        unifi_translator = UnifiTranslator(config)
+        # Step 2: 설정 객체 준비
+        try:
+            # 전역 config 사용 시도
+            test_config = globals().get('config', None)
+            if test_config is None:
+                print("🔧 전역 config 없음, 새로 생성")
+                test_config = XLTConfig()
+            else:
+                print("✅ 전역 config 사용")
+        except Exception as e:
+            print(f"❌ Config 생성 실패: {e}")
+            return jsonify({
+                'status': 'error',
+                'error': f'Config 생성 실패: {str(e)}'
+            }), 500
+
+        # Step 3: UnifiTranslator 초기화
+        try:
+            print("🔧 UnifiTranslator 초기화 시도...")
+            unifi_translator = UnifiTranslator(test_config)
+            print("✅ UnifiTranslator 초기화 성공")
+        except Exception as e:
+            print(f"❌ UnifiTranslator 초기화 실패: {e}")
+            return jsonify({
+                'status': 'error',
+                'error': f'UnifiTranslator 초기화 실패: {str(e)}'
+            }), 500
 
         # 용어집 정보 확인
         terminology_count = len(unifi_translator.line_terminology)

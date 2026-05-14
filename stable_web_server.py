@@ -4546,6 +4546,54 @@ def api_translation_guide():
             'error': str(e)
         }), 500
 
+@app.route('/api/terminology/test', methods=['POST'])
+def api_terminology_test():
+    """LINE API 용어집 연결 테스트"""
+    try:
+        print("🔍 LINE API 용어집 테스트 시작")
+
+        # UnifiTranslator를 사용해서 LINE API 용어집 테스트
+        unifi_translator = UnifiTranslator(config)
+
+        # 용어집 정보 확인
+        terminology_count = len(unifi_translator.line_terminology)
+
+        if terminology_count == 0:
+            return jsonify({
+                'status': 'error',
+                'error': 'LINE API에서 용어를 로드할 수 없습니다. API 연결 상태를 확인해주세요.'
+            }), 400
+
+        # 샘플 용어 추출 (처음 3개)
+        sample_terms = []
+        for i, (korean, translations) in enumerate(unifi_translator.line_terminology.items()):
+            if i >= 3:  # 처음 3개만
+                break
+            sample_terms.append({
+                'korean': korean,
+                'english': translations.get('en_US', ''),
+                'japanese': translations.get('ja_JP', ''),
+                'chinese': translations.get('zh_TW', ''),
+                'thai': translations.get('th_TH', '')
+            })
+
+        print(f"✅ LINE API 용어집 테스트 성공: {terminology_count}개 용어 로드됨")
+
+        return jsonify({
+            'status': 'success',
+            'message': 'LINE API 용어집이 정상적으로 로드되었습니다.',
+            'terminology_count': terminology_count,
+            'sample_terms': sample_terms,
+            'api_url': 'https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item'
+        })
+
+    except Exception as e:
+        print(f"❌ LINE API 용어집 테스트 실패: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': f'LINE API 연결 실패: {str(e)}'
+        }), 500
+
 @app.route('/api/excel-translate', methods=['GET', 'POST'])
 def api_excel_translate():
     """엑셀 파일 번역 API"""

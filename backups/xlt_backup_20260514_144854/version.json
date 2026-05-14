@@ -1,14 +1,10 @@
 {
   "name": "XLT System",
-  "version": "5.1.9",
+  "version": "5.1.7",
   "build": "2026-05-14",
   "installation_type": "git",
   "priority": "important",
   "features": [
-    "🚀 LINE API 다중 엔드포인트 지원 - API 변경에도 자동 적응하는 견고한 연결 시스템",
-    "🔄 테스트 데이터 fallback 시스템 - LINE API 실패 시 기본 용어로 기능 유지",
-    "📊 상세한 API 응답 로깅 - 디버깅 및 문제 해결을 위한 완전한 추적 시스템",
-    "🔧 UnifiTranslator import 오류 수정 - 용어집 테스트 기능 정상화",
     "🔄 버전 정보 통합 관리 시스템 구축 - 모든 UI 영역에서 동일한 버전 정보 표시 보장",
     "⚡ 버전 캐시 새로고침 기능 추가 - 업데이트 체크 시 항상 최신 버전 정보 반영",
     "🎯 템플릿 변수 통합 - version_info 객체로 일관된 버전 정보 접근",
@@ -26,7 +22,6 @@
     "⚠️ 서비스 유형 감지 및 표시 - LINE Proxy vs 실제 Claude.ai 구분",
     "🛠️ Claude 계정 정보 표시 문제 해결 - JavaScript 구문 오류 수정으로 정상 표시",
     "⚙️ Claude 계정 정보 확인 기능 - 설정 페이지에서 현재 연결된 Claude 계정 정보 실시간 확인",
-    "🔧 LINE API 응답 구조 파싱 완전 해결 - body.exceptions.terminology 형태 정식 지원으로 용어집 관리 기능 100% 정상화",
     "🔥 Claude 품질 검증 시스템 (85점→95점 목표) - 2단계 Claude 워크플로우",
     "🚀 Figma 텍스트 추출 방식 혁신 (OCR → 직접 텍스트 노드 추출)",
     "✨ 100% Claude 기반 번역 워크플로우 구축 (외부 API 완전 제거)",

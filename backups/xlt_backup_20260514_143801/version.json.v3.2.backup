@@ -1,0 +1,7 @@
+{
+  "name": "XLT System",
+  "version": "3.2.0",
+  "build": "2026-04-27",
+  "installation_type": "git",
+  "description": "피그마 디자인 → 다국어 번역 자동화 시스템"
+}

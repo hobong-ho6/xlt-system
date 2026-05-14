@@ -1,0 +1,94 @@
+{
+  "start_time": "2026-05-14 10:17:45.054350",
+  "request_data": {
+    "endpoint": "/translate-selected",
+    "method": "POST",
+    "data_keys": [
+      "session_id",
+      "xlt_keys"
+    ],
+    "session_id": "session_20260514_101550_796c1aa8",
+    "xlt_keys_count": 4,
+    "request_size": 116
+  },
+  "steps": [
+    {
+      "timestamp": "2026-05-14T10:17:45.054712",
+      "step": "요청 데이터 파싱 완료",
+      "data": {
+        "session_id": "session_20260514_101550_796c1aa8",
+        "xlt_keys": [
+          "mission_complete",
+          "text_item",
+          "mission",
+          "usdt"
+        ],
+        "data_size": 116
+      }
+    },
+    {
+      "timestamp": "2026-05-14T10:17:45.434521",
+      "step": "번역기 연결 테스트 시작",
+      "data": {
+        "translator_type": "ClaudeTranslator",
+        "translation_mode": "claude_integrated",
+        "has_test_connection": true
+      }
+    },
+    {
+      "timestamp": "2026-05-14T10:17:54.807923",
+      "step": "연결 테스트 결과 검증",
+      "data": {
+        "connection_status_type": "bool",
+        "connection_status_value": true,
+        "final_translation_mode": "claude_integrated",
+        "final_engine_name": "Claude 통합 처리 (맞춤법+번역)"
+      }
+    },
+    {
+      "timestamp": "2026-05-14T10:17:54.808559",
+      "step": "번역 배치 처리 시작",
+      "data": {
+        "text_count": 4,
+        "language_count": 5,
+        "translator_class": "ClaudeTranslator",
+        "translation_mode": "claude_integrated"
+      }
+    },
+    {
+      "timestamp": "2026-05-14T10:17:54.914786",
+      "step": "Claude 청크 배치 처리 시작",
+      "data": {
+        "method": "translate_batch_integrated_chunked",
+        "text_count": 4,
+        "target_languages": [
+          "ko_KR",
+          "en_US",
+          "ja_JP",
+          "zh_TW",
+          "th_TH"
+        ],
+        "chunk_size": 10,
+        "translator_class": "ClaudeTranslator"
+      }
+    },
+    {
+      "timestamp": "2026-05-14T10:19:09.054848",
+      "step": "Claude 청크 배치 처리 성공",
+      "data": {
+        "result_count": 4,
+        "result_type": "list"
+      }
+    },
+    {
+      "timestamp": "2026-05-14T10:19:11.635573",
+      "step": "번역 완료 - Excel 준비됨",
+      "data": {
+        "processed_count": 4,
+        "preview_data_count": 4,
+        "xlt_keys_count": 4,
+        "learned_count": 1
+      }
+    }
+  ]
+}

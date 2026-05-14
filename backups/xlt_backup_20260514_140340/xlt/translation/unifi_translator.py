@@ -30,189 +30,40 @@ class UnifiTranslator(Translator):
         try:
             import requests
 
-            # LINE API URL 목록 (여러 엔드포인트 시도)
-            api_urls = [
-                "https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item",
-                "https://landpress-content-v2.linecorp.com/api/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/items"
-            ]
+            # LINE API URL
+            api_url = "https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item"
 
-            data = None
-            successful_url = None
+            response = requests.get(api_url, timeout=5)
 
-            for api_url in api_urls:
-                print(f"🌐 LINE API 시도: {api_url}")
-                try:
-                    response = requests.get(api_url, timeout=10)
-                    print(f"📊 응답 상태: {response.status_code}")
+            if response.status_code == 200:
+                data = response.json()
 
-                    if response.status_code == 200:
-                        print(f"✅ API 응답 성공: {api_url}")
-                        data = response.json()
-                        successful_url = api_url
-                        break
-                    else:
-                        print(f"❌ API 응답 실패 {response.status_code}: {api_url}")
-                        continue
+                if 'data' in data and data['data']:
+                    terminology_data = data['data']
+                    processed_count = 0
 
-                except requests.exceptions.RequestException as e:
-                    print(f"❌ API 요청 오류: {api_url} - {e}")
-                    continue
-                except ValueError as e:
-                    print(f"❌ JSON 파싱 오류: {api_url} - {e}")
-                    continue
+                    for item in terminology_data:
+                        if isinstance(item, dict) and 'korean' in item:
+                            korean_term = item['korean']
+                            translations = {
+                                'ko_KR': korean_term,
+                                'en_US': item.get('english', ''),
+                                'ja_JP': item.get('japanese', ''),
+                                'zh_TW': item.get('chinese', ''),
+                                'th_TH': item.get('thai', '')
+                            }
 
-            if data is None:
-                # 모든 API 실패 시 테스트 데이터 사용
-                print("⚠️ 모든 LINE API 실패, 테스트 데이터 사용")
-                data = {
-                    "data": [
-                        {
-                            "korean": "거래",
-                            "english": "transaction",
-                            "japanese": "取引",
-                            "chinese": "交易",
-                            "thai": "ธุรกรรม"
-                        },
-                        {
-                            "korean": "지갑",
-                            "english": "wallet",
-                            "japanese": "ウォレット",
-                            "chinese": "錢包",
-                            "thai": "กระเป๋า"
-                        },
-                        {
-                            "korean": "토큰",
-                            "english": "token",
-                            "japanese": "トークン",
-                            "chinese": "代幣",
-                            "thai": "โทเค็น"
-                        }
-                    ]
-                }
-                successful_url = "테스트 데이터"
+                            self.line_terminology[korean_term] = translations
+                            processed_count += 1
 
-            print(f"📋 사용된 데이터 소스: {successful_url}")
+                    print(f"✅ LINE API 용어집 로드 완료: {processed_count}개 용어")
 
-            if data:
-                print(f"📄 응답 구조: {type(data)} - Keys: {list(data.keys()) if isinstance(data, dict) else 'N/A'}")
-
-                # 응답 구조 확인을 위한 상세 로깅
-                if isinstance(data, dict):
-                    print(f"🔍 data 키 존재: {'data' in data}")
-                    if 'data' in data:
-                        print(f"🔍 data 내용 타입: {type(data['data'])}")
-                        if isinstance(data['data'], list):
-                            print(f"🔍 data 배열 길이: {len(data['data'])}")
-                            if len(data['data']) > 0:
-                                print(f"🔍 첫 번째 아이템: {data['data'][0]}")
-
-                    # 다양한 응답 구조 처리
-                    terminology_data = None
-
-                    # LINE API 실제 응답 구조 처리: body.exceptions
-                    if (isinstance(data, dict) and 'body' in data and
-                        isinstance(data['body'], dict) and 'exceptions' in data['body']):
-
-                        exceptions_data = data['body']['exceptions']
-                        print(f"🔍 exceptions 데이터 구조: {type(exceptions_data)}")
-
-                        # exceptions가 dict인 경우 용어 사전을 찾기
-                        if isinstance(exceptions_data, dict):
-                            # LINE API 실제 응답 구조: exceptions.terminology (dict format)
-                            if 'terminology' in exceptions_data and isinstance(exceptions_data['terminology'], dict):
-                                terminology_dict = exceptions_data['terminology']
-                                print(f"✅ 용어 사전 발견: terminology ({len(terminology_dict)}개)")
-
-                                # 사전 형태를 리스트 형태로 변환
-                                terminology_data = []
-                                for korean_term, translations in terminology_dict.items():
-                                    if isinstance(translations, dict):
-                                        # Korean term을 키로 하고 translations를 값으로 하는 구조를
-                                        # 기존 로직에 맞는 형태로 변환
-                                        term_item = {
-                                            'korean': korean_term,
-                                            'ko_KR': korean_term,
-                                            'english': translations.get('en_US', ''),
-                                            'en_US': translations.get('en_US', ''),
-                                            'japanese': translations.get('ja_JP', ''),
-                                            'ja_JP': translations.get('ja_JP', ''),
-                                            'chinese': translations.get('zh_TW', ''),
-                                            'zh_TW': translations.get('zh_TW', ''),
-                                            'thai': translations.get('th_TH', ''),
-                                            'th_TH': translations.get('th_TH', '')
-                                        }
-                                        terminology_data.append(term_item)
-
-                                print(f"✅ 용어 사전 변환 완료: {len(terminology_data)}개 용어")
-
-                            # fallback: 기존 로직들 (배열 형태)
-                            elif terminology_data is None:
-                                # 1단계: 직접적인 키들 확인 (배열)
-                                for key in ['terms', 'glossary', 'data', 'items']:
-                                    if key in exceptions_data and isinstance(exceptions_data[key], list):
-                                        terminology_data = exceptions_data[key]
-                                        print(f"✅ 용어 배열 발견: {key} ({len(terminology_data)}개)")
-                                        break
-
-                                # 2단계: exceptions의 값들 중 배열 찾기
-                                if terminology_data is None:
-                                    for key, value in exceptions_data.items():
-                                        if isinstance(value, list) and len(value) > 0:
-                                            # 첫 번째 항목이 용어 같은 구조인지 확인
-                                            first_item = value[0]
-                                            if (isinstance(first_item, dict) and
-                                                ('korean' in first_item or 'ko' in first_item or 'ko_KR' in first_item or
-                                                 'english' in first_item or 'en' in first_item or 'en_US' in first_item)):
-                                                terminology_data = value
-                                                print(f"✅ 용어 배열 자동 발견: {key} ({len(terminology_data)}개)")
-                                                break
-
-                        # exceptions가 용어 배열인 경우 (직접 리스트)
-                        elif isinstance(exceptions_data, list):
-                            terminology_data = exceptions_data
-
-                    # 기존 구조들 (fallback)
-                    elif isinstance(data, dict) and 'data' in data and data['data']:
-                        terminology_data = data['data']
-                    elif isinstance(data, list) and len(data) > 0:
-                        terminology_data = data
-                    elif isinstance(data, dict) and 'items' in data and data['items']:
-                        terminology_data = data['items']
-                    elif isinstance(data, dict) and 'content' in data and data['content']:
-                        terminology_data = data['content']
-
-                    if terminology_data:
-                        processed_count = 0
-
-                        for item in terminology_data:
-                            if isinstance(item, dict):
-                                # 다양한 키 형태 지원
-                                korean_term = item.get('korean') or item.get('ko') or item.get('ko_KR')
-
-                                if korean_term:
-                                    translations = {
-                                        'ko_KR': korean_term,
-                                        'en_US': item.get('english') or item.get('en') or item.get('en_US', ''),
-                                        'ja_JP': item.get('japanese') or item.get('ja') or item.get('ja_JP', ''),
-                                        'zh_TW': item.get('chinese') or item.get('zh') or item.get('zh_TW', ''),
-                                        'th_TH': item.get('thai') or item.get('th') or item.get('th_TH', '')
-                                    }
-
-                                    self.line_terminology[korean_term] = translations
-                                    processed_count += 1
-
-                        if processed_count > 0:
-                            print(f"✅ LINE API 용어집 로드 완료: {processed_count}개 용어")
-                            # 용어 사전 구축
-                            self._build_terminology_dict()
-                        else:
-                            raise Exception("LINE API 응답에서 유효한 용어를 찾을 수 없습니다")
-                    else:
-                        # 응답 구조 분석을 위한 상세 정보 출력
-                        response_preview = str(data)[:500] + "..." if len(str(data)) > 500 else str(data)
-                        raise Exception(f"LINE API 응답 구조를 인식할 수 없습니다. 응답: {response_preview}")
+                    # 용어 사전 구축
+                    self._build_terminology_dict()
+                else:
+                    raise Exception("LINE API 응답에 데이터가 없습니다")
             else:
-                raise Exception("모든 LINE API 엔드포인트에서 데이터를 로드할 수 없습니다")
+                raise Exception(f"LINE API 응답 오류: {response.status_code}")
 
         except Exception as e:
             print(f"❌ LINE API 용어집 로드 실패: {e}")

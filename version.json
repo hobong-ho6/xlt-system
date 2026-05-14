@@ -5,6 +5,7 @@
   "installation_type": "git",
   "priority": "important",
   "features": [
+    "🔧 UnifiTranslator import 오류 수정 - 용어집 테스트 기능 정상화",
     "🔄 버전 정보 통합 관리 시스템 구축 - 모든 UI 영역에서 동일한 버전 정보 표시 보장",
     "⚡ 버전 캐시 새로고침 기능 추가 - 업데이트 체크 시 항상 최신 버전 정보 반영",
     "🎯 템플릿 변수 통합 - version_info 객체로 일관된 버전 정보 접근",

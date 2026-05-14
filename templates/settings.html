@@ -184,6 +184,46 @@
                                 </div>
                             </div>
 
+                            <!-- LINE API 용어집 관리 -->
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-language me-2"></i>
+                                    용어집 관리
+                                </label>
+
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <strong>LINE API 용어집:</strong> 번역 품질과 일관성을 보장하는 핵심 금융 용어들을 관리합니다.
+                                </div>
+
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-outline-primary" id="edit-terminology" onclick="window.open('https://landpress-content-v2.linecorp.com/projects/wdmwbfuv10x39bukv58ocevp/content/collections/web3_xlt_json/items?env=main', '_blank')">
+                                        <i class="fas fa-edit me-2"></i>
+                                        LINE API 용어집 편집하기
+                                        <i class="fas fa-external-link-alt ms-2"></i>
+                                    </button>
+
+                                    <button type="button" class="btn btn-outline-success btn-sm" id="refresh-terminology">
+                                        <i class="fas fa-sync me-1"></i>
+                                        용어집 새로고침 테스트
+                                    </button>
+                                </div>
+
+                                <div id="terminology-result" class="mt-2" style="display: none;"></div>
+
+                                <div class="form-text mt-3">
+                                    <strong>사용 방법:</strong><br>
+                                    1. "LINE API 용어집 편집하기" 버튼 클릭<br>
+                                    2. LINE 관리 콘솔에서 용어 추가/수정<br>
+                                    3. "용어집 새로고침 테스트"로 연동 확인<br>
+                                    <br>
+                                    <small class="text-muted">
+                                        <i class="fas fa-shield-alt me-1"></i>
+                                        LINE API 용어집은 시스템에서 자동으로 실시간 동기화됩니다.
+                                    </small>
+                                </div>
+                            </div>
+
                             <!-- 설정 저장 버튼 -->
                             <div class="d-grid gap-2">
                                 <button type="button" class="btn btn-success btn-lg" id="save-settings">
@@ -389,6 +429,18 @@
                                 </p>
                             </div>
 
+                            <!-- 용어집 관리 도움말 -->
+                            <div class="mb-3">
+                                <h6 class="fw-bold text-primary">
+                                    <i class="fas fa-language me-1"></i>
+                                    용어집 관리란?
+                                </h6>
+                                <p class="small">
+                                    LINE API를 통해 금융 용어의 번역 일관성을 보장합니다.
+                                    모든 용어는 실시간으로 동기화되어 번역 품질을 향상시킵니다.
+                                </p>
+                            </div>
+
                             <!-- 보안 주의사항 -->
                             <div class="mb-3">
                                 <h6 class="fw-bold text-warning">
@@ -412,6 +464,7 @@
                                     <li><strong>토큰 테스트 실패:</strong> 토큰을 다시 확인해보세요</li>
                                     <li><strong>디렉토리 오류:</strong> 경로가 존재하고 쓰기 권한이 있는지 확인하세요</li>
                                     <li><strong>포트 충돌:</strong> 다른 포트 번호로 변경해보세요</li>
+                                    <li><strong>용어집 연결 실패:</strong> LINE API 상태를 확인하거나 네트워크 연결을 점검하세요</li>
                                 </ul>
                             </div>
 
@@ -499,6 +552,11 @@
                 // 로그 설정 저장
                 document.getElementById('save-log-settings').addEventListener('click', () => {
                     this.saveLogSettings();
+                });
+
+                // 용어집 새로고침 테스트
+                document.getElementById('refresh-terminology').addEventListener('click', () => {
+                    this.testTerminologyRefresh();
                 });
             }
 
@@ -1112,6 +1170,67 @@
                         saveButton.className = 'btn btn-outline-primary';
                         saveButton.innerHTML = originalText;
                     }, 2000);
+                }
+            }
+
+            // LINE API 용어집 새로고침 테스트
+            async testTerminologyRefresh() {
+                const refreshButton = document.getElementById('refresh-terminology');
+                const resultDiv = document.getElementById('terminology-result');
+                const originalText = refreshButton.innerHTML;
+
+                try {
+                    refreshButton.disabled = true;
+                    refreshButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>테스트 중...';
+
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = '<div class="alert alert-info">LINE API 용어집 연결을 확인하는 중...</div>';
+
+                    const response = await fetch('/api/terminology/test', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({})
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        const termCount = data.terminology_count || 0;
+                        const sampleTerms = data.sample_terms || [];
+
+                        let sampleHtml = '';
+                        if (sampleTerms.length > 0) {
+                            sampleHtml = '<br><strong>샘플 용어:</strong><ul class="small mb-0 mt-1">';
+                            sampleTerms.slice(0, 3).forEach(term => {
+                                sampleHtml += `<li>${term.korean} → EN: ${term.english}, JA: ${term.japanese}</li>`;
+                            });
+                            sampleHtml += '</ul>';
+                        }
+
+                        resultDiv.innerHTML = `
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle me-2"></i>
+                                <strong>✅ LINE API 연결 성공!</strong><br>
+                                로드된 용어 개수: <strong>${termCount}개</strong>
+                                ${sampleHtml}
+                            </div>
+                        `;
+                    } else {
+                        throw new Error(data.error || 'LINE API 연결 실패');
+                    }
+
+                } catch (error) {
+                    console.error('용어집 테스트 실패:', error);
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>❌ 용어집 테스트 실패:</strong><br>
+                            ${error.message}
+                        </div>
+                    `;
+                } finally {
+                    refreshButton.disabled = false;
+                    refreshButton.innerHTML = originalText;
                 }
             }
 

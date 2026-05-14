@@ -1,0 +1,29 @@
+{
+    "self_healing": {
+        "enabled": true,
+        "auto_restart_on_crash": true,
+        "auto_fix_io_errors": true,
+        "auto_recover_dependencies": true,
+        "health_check_interval": 60,
+        "max_auto_restarts": 3,
+        "emergency_contact": {
+            "log_file": "~/.xlt_autofix.log",
+            "reinstall_url": "https://raw.githubusercontent.com/hobong-ho6/xlt-system/main/install/install_v2.sh"
+        }
+    },
+    "monitoring": {
+        "check_port_5004": true,
+        "check_server_response": true,
+        "check_api_endpoints": ["/api/version", "/api/health"],
+        "check_file_permissions": true
+    },
+    "auto_recovery": {
+        "strategies": [
+            "process_restart",
+            "dependency_reinstall",
+            "file_permission_fix",
+            "github_file_refresh",
+            "complete_reinstall"
+        ]
+    }
+}

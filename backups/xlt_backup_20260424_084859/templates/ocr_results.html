@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR 결과 - XLT System v2.0</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <style>
+        .ocr-item {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            transition: all 0.3s ease;
+        }
+        .ocr-item:hover {
+            border-color: #0d6efd;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .ocr-item.selected {
+            border-color: #0d6efd;
+            background-color: rgba(13, 110, 253, 0.05);
+        }
+        .confidence-badge {
+            font-size: 0.75rem;
+        }
+        .text-edit-input {
+            font-family: inherit;
+            border: none;
+            background: transparent;
+            width: 100%;
+        }
+        .text-edit-input:focus {
+            outline: 1px solid #0d6efd;
+            outline-offset: 2px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+        }
+        .selection-summary {
+            position: sticky;
+            top: 20px;
+            z-index: 100;
+        }
+
+        /* 마크다운 콘텐츠 스타일 */
+        .markdown-content {
+            font-size: 14px;
+            line-height: 1.8;
+            color: #333;
+        }
+        .markdown-content h1 {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #e9ecef;
+        }
+        .markdown-content h2 {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-top: 2rem;
+            margin-bottom: 0.8rem;
+            color: #0d6efd;
+        }
+        .markdown-content h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.6rem;
+        }
+        .markdown-content h4 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .markdown-content p {
+            margin-bottom: 0.8rem;
+        }
+        .markdown-content ul, .markdown-content ol {
+            margin-bottom: 1rem;
+            padding-left: 2rem;
+        }
+        .markdown-content li {
+            margin-bottom: 0.4rem;
+        }
+        .markdown-content code {
+            background-color: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #e83e8c;
+        }
+        .markdown-content pre {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin-bottom: 1rem;
+        }
+        .markdown-content pre code {
+            background-color: transparent;
+            padding: 0;
+            color: inherit;
+        }
+        .markdown-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+        }
+        .markdown-content table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            padding: 0.5rem;
+            border: 1px solid #dee2e6;
+            text-align: left;
+        }
+        .markdown-content table td {
+            padding: 0.5rem;
+            border: 1px solid #dee2e6;
+        }
+        .markdown-content blockquote {
+            border-left: 4px solid #0d6efd;
+            padding-left: 1rem;
+            margin-left: 0;
+            color: #6c757d;
+            font-style: italic;
+        }
+        .markdown-content hr {
+            margin: 2rem 0;
+            border: 0;
+            border-top: 2px solid #e9ecef;
+        }
+
+        /* 이미지 미리보기 컨테이너 스타일 */
+        .image-preview-container {
+            position: sticky;
+            top: 20px;
+            z-index: 10;
+        }
+        .image-preview-container .card {
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: none;
+        }
+        .image-preview-container img {
+            max-height: 400px;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- 헤더 -->
+        <header class="row bg-primary text-white py-3 mb-4">
+            <div class="col-12">
+                <div class="container">
+                    <a href="/" class="text-decoration-none text-white header-link">
+                        <h1 class="mb-0">
+                            <i class="fas fa-eye me-2"></i>
+                            OCR 결과 확인
+                        </h1>
+                        <p class="mb-0 text-light">번역할 텍스트를 선택하고 수정하세요</p>
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <div class="container-fluid">
+            <div class="row">
+                <!-- 왼쪽: 플로팅 이미지 미리보기 -->
+                <!-- DEBUG: ocr_data.image_url = {{ ocr_data.image_url }} -->
+                {% if ocr_data.image_url %}
+                <div class="col-lg-4 col-xl-3">
+                    <div class="image-preview-container sticky-top">
+                        <div class="card">
+                            <div class="card-header bg-info text-white">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-image me-2"></i>
+                                    이미지 미리보기
+                                </h6>
+                            </div>
+                            <div class="card-body p-2">
+                                <img src="{{ ocr_data.image_url }}"
+                                     class="img-fluid rounded"
+                                     alt="처리된 이미지"
+                                     style="width: 100%; height: auto;">
+                            </div>
+                            <div class="card-footer text-muted small">
+                                <i class="fas fa-info-circle me-1"></i>
+                                이미지를 보며 텍스트를 선택하세요
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- 오른쪽: OCR 결과 -->
+                <div class="{% if ocr_data.image_url %}col-lg-8 col-xl-9{% else %}col-12{% endif %}">
+                    <!-- 소스 정보 -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <h5 class="alert-heading">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    처리된 소스
+                                </h5>
+                                <p class="mb-0">{{ ocr_data.source_description }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 백업 선택 요약 (상단) -->
+                    <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card bg-light">
+                        <div class="card-body py-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-3">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-list-check me-2"></i>
+                                        선택 요약: <span class="text-primary" id="backup-selected-count">0개</span>
+                                    </h6>
+                                </div>
+                                <div class="col-md-2">
+                                    <div class="text-muted small">
+                                        <i class="fas fa-cogs me-1"></i>
+                                        개별 선택 모드
+                                    </div>
+                                </div>
+                                <div class="col-md-7">
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <button type="button" class="btn btn-primary" id="backup-translate-btn" disabled>
+                                            <i class="fas fa-language me-2"></i>
+                                            <span id="backup-translate-text">선택 항목 번역</span>
+                                        </button>
+                                        <button type="button" class="btn btn-info btn-sm" id="view-guide-btn" onclick="if(window.ocrManager){window.ocrManager.showTranslationGuide();}else{alert('시스템 초기화 중입니다. 잠시 후 다시 시도해주세요.');}">
+                                            <i class="fas fa-book me-1"></i>
+                                            번역 가이드 보기
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="backup-select-all">
+                                            <i class="fas fa-check-double me-1"></i>
+                                            전체 선택
+                                        </button>
+                                        <button type="button" class="btn btn-outline-danger btn-sm" id="backup-clear-selection">
+                                            <i class="fas fa-times me-1"></i>
+                                            선택 해제
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+                    <!-- OCR 결과 목록 -->
+                    <div class="row mb-4">
+                <div class="col-12">
+                    <!-- 탭 네비게이션 -->
+                    <ul class="nav nav-tabs mb-3" id="ocr-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="filtered-tab" data-bs-toggle="tab" data-bs-target="#filtered-results" type="button" role="tab">
+                                <i class="fas fa-filter me-2"></i>
+                                의미있는 텍스트 ({{ ocr_data.filtered_texts|length }}개)
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="all-tab" data-bs-toggle="tab" data-bs-target="#all-results" type="button" role="tab">
+                                <i class="fas fa-eye me-2"></i>
+                                전체 OCR 결과 ({{ ocr_data.ocr_results|length }}개)
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- 탭 내용 -->
+                    <div class="tab-content" id="ocr-tab-content">
+                        <!-- 의미있는 텍스트 탭 -->
+                        <div class="tab-pane fade show active" id="filtered-results" role="tabpanel">
+                            {% if ocr_data.filtered_texts %}
+                                {% for item in ocr_data.filtered_texts %}
+                                <div class="ocr-item p-3" data-index="{{ item.original_index }}" data-source="filtered">
+                                    <div class="form-check">
+                                        <input class="form-check-input item-checkbox" type="checkbox" id="filtered_{{ loop.index0 }}">
+                                        <label class="form-check-label w-100" for="filtered_{{ loop.index0 }}">
+                                            <div class="d-flex justify-content-between align-items-start">
+                                                <div class="flex-grow-1 me-3">
+                                                    <div class="fw-bold text-primary mb-2">#{{ loop.index }} (필터링됨)</div>
+                                                    <input type="text" class="text-edit-input fw-bold" value="{{ item.text }}" placeholder="텍스트를 수정하세요...">
+                                                    {% if item.confidence %}
+                                                    <div class="mt-2">
+                                                        <span class="badge bg-success confidence-badge">
+                                                            신뢰도: {{ "%.1f"|format(item.confidence * 100) }}%
+                                                        </span>
+                                                    </div>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    의미있는 텍스트가 발견되지 않았습니다.
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- 전체 OCR 결과 탭 -->
+                        <div class="tab-pane fade" id="all-results" role="tabpanel">
+                            {% for item in ocr_data.ocr_results %}
+                            <div class="ocr-item p-3" data-index="{{ loop.index0 }}" data-source="ocr">
+                                <div class="form-check">
+                                    <input class="form-check-input item-checkbox" type="checkbox" id="ocr_{{ loop.index0 }}">
+                                    <label class="form-check-label w-100" for="ocr_{{ loop.index0 }}">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div class="flex-grow-1 me-3">
+                                                <div class="fw-bold text-secondary mb-2">#{{ loop.index }} (원본)</div>
+                                                <input type="text" class="text-edit-input" value="{{ item.text }}" placeholder="텍스트를 수정하세요...">
+                                                <div class="mt-2">
+                                                    <span class="badge bg-info confidence-badge">
+                                                        신뢰도: {{ "%.1f"|format(item.confidence * 100) }}%
+                                                    </span>
+                                                    {% if item.bbox %}
+                                                    <span class="badge bg-secondary confidence-badge ms-1">
+                                                        위치: ({{ item.bbox[0]|int }}, {{ item.bbox[1]|int }})
+                                                    </span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+                    <!-- 진행 상태 -->
+                    <div class="row mt-4" id="progress-section" style="display: none;">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <div class="spinner-border text-primary mb-3" role="status">
+                                <span class="visually-hidden">번역 중...</span>
+                            </div>
+                            <h5 id="progress-title">선택된 텍스트 번역 중...</h5>
+                            <p class="text-muted" id="progress-message">치환자를 감지하고 다국어 번역을 진행하고 있습니다.</p>
+
+                            <!-- 진행 상황 상세 정보 -->
+                            <div class="mt-3" id="progress-details" style="display: none;">
+                                <div class="progress" style="height: 25px;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                         role="progressbar"
+                                         id="translation-progress-bar"
+                                         style="width: 0%"
+                                         aria-valuenow="0"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100">
+                                        <span id="progress-percentage">0%</span>
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <small class="text-muted" id="progress-status"></small>
+                                </div>
+
+                                <!-- 실시간 로그 영역 -->
+                                <div class="mt-3" id="translation-logs-section">
+                                    <h6 class="text-start">🔄 번역 진행 로그</h6>
+                                    <div class="card" style="max-height: 200px; overflow-y: auto;">
+                                        <div class="card-body p-2">
+                                            <div id="translation-logs" class="text-start small">
+                                                <!-- 실시간 로그가 여기에 표시됩니다 -->
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+                    <!-- 번역 결과 -->
+                    <div class="row mt-4" id="result-section" style="display: none;">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="fas fa-check-circle me-2"></i>
+                                번역 완료
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="result-content"></div>
+                            <div class="mt-3 d-flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-success btn-lg" id="download-btn">
+                                    <i class="fas fa-download me-2"></i>
+                                    Excel 파일 다운로드
+                                </button>
+                                <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg" id="new-translation-btn">
+                                    <i class="fas fa-home me-2"></i>
+                                    홈으로 돌아가기
+                                </a>
+                            </div>
+                            <!-- 하단 고정 버튼 -->
+                            <div class="mt-4 p-3 bg-light rounded">
+                                <div class="d-flex justify-content-center gap-3">
+                                    <a href="{{ url_for('index') }}" class="btn btn-outline-primary btn-lg">
+                                        <i class="fas fa-home me-2"></i>
+                                        처음으로 돌아가기
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 플로팅 선택 요약 패널 (드래그 가능) -->
+        <div id="floating-selection-panel" class="floating-panel draggable" style="display: block !important; opacity: 1; visibility: visible;">
+            <div class="floating-panel-header draggable-handle" style="cursor: move;">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="fas fa-grip-vertical me-1"></i>
+                        <i class="fas fa-list-check me-2"></i>
+                        선택 요약
+                    </h6>
+                    <button type="button" class="btn-close-panel" id="close-panel-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="floating-panel-body">
+                <div class="selection-info mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">선택된 항목:</span>
+                        <span class="fw-bold text-primary" id="floating-selected-count">0개</span>
+                    </div>
+                </div>
+
+                <!-- 치환자 개별 선택 안내 -->
+                <div class="mb-3">
+                    <div class="alert alert-info py-2 px-3" style="font-size: 0.8rem;">
+                        <i class="fas fa-info-circle me-1"></i>
+                        치환자는 번역 시 개별 선택 가능합니다
+                    </div>
+                </div>
+
+                <!-- 버튼들 -->
+                <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-primary" id="floating-translate-btn" disabled>
+                        <i class="fas fa-language me-2"></i>
+                        <span id="floating-translate-text">선택 항목 번역</span>
+                    </button>
+                    <div class="row g-1">
+                        <div class="col-6">
+                            <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="floating-select-all">
+                                <i class="fas fa-check-double me-1"></i>
+                                전체 선택
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <button type="button" class="btn btn-outline-danger btn-sm w-100" id="floating-clear-selection">
+                                <i class="fas fa-times me-1"></i>
+                                선택 해제
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 번역 가이드 모달 -->
+        <div class="modal fade" id="guideModal" tabindex="-1" aria-labelledby="guideModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title" id="guideModalLabel">
+                            <i class="fas fa-book me-2"></i>
+                            Unifi 번역 가이드라인 (guide.md)
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="guide-loading" class="text-center py-5">
+                            <div class="spinner-border text-primary mb-3" role="status">
+                                <span class="visually-hidden">로딩 중...</span>
+                            </div>
+                            <p class="text-muted">번역 가이드를 불러오는 중...</p>
+                        </div>
+                        <div id="guide-content" class="markdown-content" style="display: none;">
+                            <!-- guide.md 내용이 여기에 렌더링됩니다 -->
+                        </div>
+                        <div id="guide-error" class="alert alert-danger" style="display: none;">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <span id="guide-error-message">가이드를 불러올 수 없습니다.</span>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                        <a href="/guide.md" target="_blank" class="btn btn-outline-primary">
+                            <i class="fas fa-external-link-alt me-1"></i>
+                            새 창에서 열기
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- XLT Key Prefix 입력 모달 -->
+        <div class="modal fade" id="keyPrefixModal" tabindex="-1" aria-labelledby="keyPrefixModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-info text-white">
+                        <h5 class="modal-title" id="keyPrefixModalLabel">
+                            <i class="fas fa-key me-2"></i>
+                            XLT Key 설정
+                        </h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <p class="text-muted mb-3">
+                                <i class="fas fa-info-circle me-1"></i>
+                                번역이 완료되었습니다! Excel 파일의 Key ID를 설정하시겠습니까?
+                            </p>
+                            <label for="keyPrefixInput" class="form-label fw-bold">
+                                Key Prefix (선택사항)
+                            </label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="keyPrefixInput"
+                                placeholder="예: UF_home_mission"
+                                autocomplete="off"
+                            >
+                            <div class="form-text">
+                                입력한 prefix 뒤에 번호가 순차적으로 붙습니다.<br>
+                                <strong>예:</strong> UF_home_mission → UF_home_mission_1, UF_home_mission_2, ...
+                            </div>
+                        </div>
+                        <div class="alert alert-light border">
+                            <small class="text-muted">
+                                <i class="fas fa-lightbulb me-1"></i>
+                                <strong>참고:</strong> 입력하지 않으면 기본값(item_1, item_2, ...)으로 생성됩니다.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="skipKeyPrefix">
+                            <i class="fas fa-forward me-1"></i>
+                            건너뛰기
+                        </button>
+                        <button type="button" class="btn btn-primary" id="applyKeyPrefix">
+                            <i class="fas fa-check me-1"></i>
+                            적용하기
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 하단 홈 버튼 (항상 표시) -->
+        <div class="container my-5">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card border-primary shadow-sm">
+                        <div class="card-body text-center py-4">
+                            <h5 class="mb-3">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                작업을 완료하셨나요?
+                            </h5>
+                            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg px-5">
+                                <i class="fas fa-home me-2"></i>
+                                홈으로 돌아가기
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 푸터 -->
+        <footer class="mt-5 py-4 bg-light text-center">
+            <div class="container">
+                <p class="text-muted mb-0">
+                    XLT System v2.0 | 수동 모드: 원하는 텍스트만 선택하여 번역
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/ocr_results.js') }}"></script>
+</body>
+</html>

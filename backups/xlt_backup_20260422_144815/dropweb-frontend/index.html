@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XLT System - 다국어 번역 도구</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+            <h1 class="text-2xl font-bold text-gray-900">XLT System v3.0</h1>
+            <p class="text-gray-600 mt-1">피그마 디자인에서 다국어 번역까지 한번에</p>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Connection Status -->
+        <div id="connection-status" class="mb-6 p-4 rounded-lg border">
+            <div id="status-checking" class="flex items-center text-blue-600">
+                <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-3"></div>
+                로컬 XLT 서버 연결 확인 중...
+            </div>
+            <div id="status-connected" class="hidden flex items-center text-green-600">
+                <svg class="h-5 w-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                </svg>
+                XLT 서버 연결됨 (localhost:5004)
+            </div>
+            <div id="status-disconnected" class="hidden">
+                <div class="flex items-center text-red-600 mb-3">
+                    <svg class="h-5 w-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                    로컬 XLT 서버에 연결할 수 없습니다
+                </div>
+                <div class="bg-yellow-50 p-4 rounded-lg text-sm">
+                    <h4 class="font-semibold text-yellow-800 mb-2">서버 시작 방법:</h4>
+                    <ol class="list-decimal list-inside text-yellow-700 space-y-1">
+                        <li>터미널에서 XLT 프로젝트 폴더로 이동</li>
+                        <li><code class="bg-yellow-200 px-1 rounded">python3 stable_web_server.py</code> 실행</li>
+                        <li>브라우저에서 이 페이지 새로고침</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Interface -->
+        <div id="main-interface" class="hidden">
+            <!-- Figma URL Input -->
+            <section class="bg-white rounded-lg shadow p-6 mb-6">
+                <h2 class="text-lg font-semibold mb-4">1. 피그마 URL 입력</h2>
+                <div class="flex gap-4">
+                    <input
+                        type="text"
+                        id="figma-url"
+                        placeholder="https://www.figma.com/design/..."
+                        class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                    <button
+                        id="process-btn"
+                        class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+                    >
+                        OCR 처리
+                    </button>
+                </div>
+            </section>
+
+            <!-- Processing Status -->
+            <section id="processing-section" class="hidden bg-white rounded-lg shadow p-6 mb-6">
+                <h2 class="text-lg font-semibold mb-4">처리 중...</h2>
+                <div class="flex items-center text-blue-600">
+                    <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-3"></div>
+                    <span id="processing-message">피그마 이미지를 다운로드하고 있습니다...</span>
+                </div>
+            </section>
+
+            <!-- Results -->
+            <section id="results-section" class="hidden bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold mb-4">2. 추출된 텍스트</h2>
+                <div id="ocr-results" class="space-y-2">
+                    <!-- OCR 결과가 여기 표시됨 -->
+                </div>
+                <div class="mt-6 flex justify-between">
+                    <button id="select-all-btn" class="px-4 py-2 border rounded-lg hover:bg-gray-50">
+                        전체 선택
+                    </button>
+                    <button id="translate-btn" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400">
+                        번역 시작
+                    </button>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

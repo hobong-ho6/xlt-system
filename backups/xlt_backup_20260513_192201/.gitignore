@@ -1,0 +1,26 @@
+.backup_before_pull/
+figma_config.json
+git_remote_backup.txt
+
+# 테스트 및 생성 파일들
+downloads/
+output/
+*.xlsx
+*.xls
+*.log
+server.log
+tray_startup.log
+server_startup.log
+
+# 테스트 파일들
+test_*.py
+performance_*.py
+parallel_*.py
+*_test.py
+
+# Figma 세션 이미지들
+figma/session_*.png
+
+# 임시 파일들
+*.tmp
+*.temp

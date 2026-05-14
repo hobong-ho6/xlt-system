@@ -1,0 +1,129 @@
+{
+  "start_time": "2026-05-13 15:32:06.813614",
+  "request_data": {
+    "endpoint": "/translate-selected",
+    "method": "POST",
+    "data_keys": [
+      "session_id",
+      "xlt_keys"
+    ],
+    "session_id": "session_20260513_150817_63122909",
+    "xlt_keys_count": 59,
+    "request_size": 734
+  },
+  "steps": [
+    {
+      "timestamp": "2026-05-13T15:32:06.814048",
+      "step": "요청 데이터 파싱 완료",
+      "data": {
+        "session_id": "session_20260513_150817_63122909",
+        "xlt_keys": [
+          "text_item",
+          "text_item_1",
+          "text_item_2",
+          "text_item_3",
+          "text_item_4",
+          "text_item_5",
+          "text_item_6",
+          "text_item_7",
+          "usdt",
+          "usdt_1",
+          "wallet",
+          "wallet_1",
+          "text_item_8",
+          "text_item_9",
+          "0",
+          "unifi",
+          "trade",
+          "text_item_10",
+          "unifi_1",
+          "text_item_11",
+          "unifi_2",
+          "mission",
+          "usdt_2",
+          "mission_1",
+          "usdt_3",
+          "text_item_12",
+          "0_usdt",
+          "usdt_4",
+          "0_1",
+          "0_1_1",
+          "text_item_13",
+          "idrp_usdt",
+          "0_2",
+          "usdt_5",
+          "text_item_14",
+          "limited_0_1_2_3",
+          "usdt_0",
+          "0_3",
+          "prime",
+          "vip",
+          "vip_1",
+          "vip_2",
+          "text_item_15",
+          "unifi_3",
+          "text_item_16",
+          "usdt_6",
+          "0_4",
+          "0_5",
+          "0_usdt_1",
+          "text_item_17",
+          "usdt_0_1",
+          "usdt_7",
+          "0_6",
+          "usdt_8",
+          "idrp",
+          "0_1_2",
+          "apps",
+          "assets",
+          "home"
+        ],
+        "data_size": 734
+      }
+    },
+    {
+      "timestamp": "2026-05-13T15:32:06.824378",
+      "step": "번역기 연결 테스트 시작",
+      "data": {
+        "translator_type": "ClaudeTranslator",
+        "translation_mode": "claude_integrated",
+        "has_test_connection": true
+      }
+    },
+    {
+      "timestamp": "2026-05-13T15:32:16.832448",
+      "step": "Claude 연결 테스트 타임아웃",
+      "data": {
+        "translation_mode": "claude_integrated",
+        "reason": "timeout"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T15:32:16.833052",
+      "step": "연결 테스트 결과 검증",
+      "data": {
+        "connection_status_type": "bool",
+        "connection_status_value": false,
+        "final_translation_mode": "claude_integrated",
+        "final_engine_name": "Claude 통합 처리 (맞춤법+번역)"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T15:32:16.845172",
+      "step": "번역 실패로 세션 종료",
+      "data": {
+        "error_type": "Exception",
+        "error_message": "번역 서비스 연결 실패",
+        "translation_mode": "claude_integrated",
+        "traceback_lines": 5
+      }
+    }
+  ],
+  "error": {
+    "timestamp": "2026-05-13T15:32:16.843523",
+    "error_type": "Exception",
+    "error_message": "번역 서비스 연결 실패",
+    "context": "번역 실행 중 최종 에러",
+    "traceback": "Traceback (most recent call last):\n  File \"/Users/user/XLT-System/stable_web_server.py\", line 2687, in translate_selected\n    raise Exception(\"번역 서비스 연결 실패\")\nException: 번역 서비스 연결 실패\n"
+  }
+}

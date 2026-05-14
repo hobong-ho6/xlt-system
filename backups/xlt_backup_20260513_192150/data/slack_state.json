@@ -1,0 +1,26 @@
+{
+  "channels": {
+    "C1234567890": {
+      "last_check": "1777009210.163331",
+      "last_message_ts": "1777009210.163331"
+    },
+    "C1234567891": {
+      "last_check": "1777009211.168454",
+      "last_message_ts": "1777009211.168454"
+    }
+  },
+  "monitored_threads": {},
+  "user_profile": {
+    "id": "U05SSQSBVFG",
+    "name": "김호근",
+    "real_name": "Kim HoGeun （김호근）",
+    "profile": {
+      "display_name": "김호근 / Hogeun.Kim_Web3 Production",
+      "email": "hogeun.kim@linecorp.com",
+      "phone": "+82-10-7117-1043",
+      "title": "CEO, Web3 Group, Web3 Production Office, Web3 Planning",
+      "company": "LINE NEXT Corp."
+    }
+  },
+  "last_cleanup": 1777007013.8690822
+}

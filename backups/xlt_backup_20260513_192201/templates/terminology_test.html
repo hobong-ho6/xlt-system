@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XLT 용어집 API 테스트</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .api-section {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .api-title {
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .test-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .test-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .test-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .result-container {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .loading {
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        .success {
+            color: #28a745;
+        }
+
+        .error {
+            color: #dc3545;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-success { background-color: #28a745; }
+        .status-error { background-color: #dc3545; }
+        .status-warning { background-color: #ffc107; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌐 XLT 용어집 API 테스트</h1>
+        <p>Google Sheets 기반 용어집 관리 시스템 (v5.1.1)</p>
+    </div>
+
+    <!-- 시스템 상태 섹션 -->
+    <div class="api-section">
+        <h2 class="api-title">🔍 시스템 상태 검사</h2>
+        <button class="test-button" onclick="testSystemStatus()">시스템 상태 확인</button>
+        <div id="status-result" class="result-container" style="display: none;"></div>
+        <div id="status-stats" class="stats-grid"></div>
+    </div>
+
+    <!-- 전체 용어집 API -->
+    <div class="api-section">
+        <h2 class="api-title">📚 전체 용어집 데이터</h2>
+        <p><strong>엔드포인트:</strong> <code>/api/terminology</code></p>
+        <p>현재 guide.md 기반 24개 핵심 용어 + 5개 예외 항목을 JSON 형태로 제공합니다.</p>
+        <button class="test-button" onclick="testTerminology()">용어집 데이터 로드</button>
+        <button class="test-button" onclick="showTerminologyStats()">통계 보기</button>
+        <div id="terminology-result" class="result-container" style="display: none;"></div>
+    </div>
+
+    <!-- Claude 형식 용어집 API -->
+    <div class="api-section">
+        <h2 class="api-title">🤖 Claude 프롬프트 형식</h2>
+        <p><strong>엔드포인트:</strong> <code>/api/terminology/claude-format</code></p>
+        <p>Claude AI 번역에 사용되는 형식으로 변환된 용어집을 제공합니다.</p>
+        <button class="test-button" onclick="testClaudeFormat()">Claude 형식 변환</button>
+        <button class="test-button" onclick="copyClaudePrompt()">클립보드 복사</button>
+        <div id="claude-result" class="result-container" style="display: none;"></div>
+    </div>
+
+    <!-- Google Sheets 테스트 API -->
+    <div class="api-section">
+        <h2 class="api-title">📊 Google Sheets 통합 테스트</h2>
+        <p><strong>엔드포인트:</strong> <code>/api/terminology/test-sheets</code></p>
+        <p>Google Sheets 연동 상태, 캐시 시스템, Claude 통합을 종합적으로 테스트합니다.</p>
+        <button class="test-button" onclick="testGoogleSheets()">Google Sheets 테스트</button>
+        <button class="test-button" onclick="showIntegrationGuide()">설정 가이드</button>
+        <div id="sheets-result" class="result-container" style="display: none;"></div>
+    </div>
+
+    <script>
+        let terminologyData = null;
+        let claudePrompt = null;
+
+        // API 호출 유틸리티
+        async function callAPI(endpoint) {
+            try {
+                const response = await fetch(endpoint);
+                return await response.json();
+            } catch (error) {
+                return { status: 'error', message: error.message };
+            }
+        }
+
+        // 결과 표시 유틸리티
+        function showResult(containerId, data, loading = false) {
+            const container = document.getElementById(containerId);
+            container.style.display = 'block';
+
+            if (loading) {
+                container.innerHTML = '<div class="loading">로딩 중...</div>';
+                return;
+            }
+
+            const className = data.status === 'success' ? 'success' : 'error';
+            container.innerHTML = `<div class="${className}">
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            </div>`;
+        }
+
+        // 시스템 상태 테스트
+        async function testSystemStatus() {
+            showResult('status-result', null, true);
+            const result = await callAPI('/api/terminology/test-sheets');
+            showResult('status-result', result);
+
+            if (result.status === 'success') {
+                const summary = result.summary;
+                const statsHtml = `
+                    <div class="stat-card">
+                        <span class="stat-number">
+                            <span class="status-indicator ${summary.cache_working ? 'status-success' : 'status-error'}"></span>
+                            캐시 시스템
+                        </span>
+                        <span class="stat-label">${summary.cache_working ? '정상 작동' : '오류 발생'}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number">
+                            <span class="status-indicator ${summary.google_sheets_ready ? 'status-success' : 'status-warning'}"></span>
+                            Google Sheets
+                        </span>
+                        <span class="stat-label">${summary.google_sheets_ready ? '연결됨' : '비활성화'}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number">
+                            <span class="status-indicator ${summary.claude_integration_working ? 'status-success' : 'status-error'}"></span>
+                            Claude 통합
+                        </span>
+                        <span class="stat-label">${summary.claude_integration_working ? '정상 작동' : '오류 발생'}</span>
+                    </div>
+                `;
+                document.getElementById('status-stats').innerHTML = statsHtml;
+            }
+        }
+
+        // 용어집 데이터 테스트
+        async function testTerminology() {
+            showResult('terminology-result', null, true);
+            const result = await callAPI('/api/terminology');
+            terminologyData = result;
+            showResult('terminology-result', result);
+        }
+
+        // 용어집 통계 보기
+        function showTerminologyStats() {
+            if (!terminologyData || terminologyData.status !== 'success') {
+                alert('먼저 용어집 데이터를 로드해주세요.');
+                return;
+            }
+
+            const stats = terminologyData.stats;
+            const statsResult = {
+                status: 'success',
+                message: '용어집 통계',
+                statistics: {
+                    총_용어_수: stats.total_terms,
+                    예외_항목_수: stats.total_exceptions,
+                    지원_언어: stats.languages,
+                    버전: stats.version,
+                    마지막_업데이트: stats.last_updated
+                }
+            };
+            showResult('terminology-result', statsResult);
+        }
+
+        // Claude 형식 테스트
+        async function testClaudeFormat() {
+            showResult('claude-result', null, true);
+            const result = await callAPI('/api/terminology/claude-format');
+            claudePrompt = result.status === 'success' ? result.claude_prompt : null;
+            showResult('claude-result', result);
+        }
+
+        // Claude 프롬프트 복사
+        function copyClaudePrompt() {
+            if (!claudePrompt) {
+                alert('먼저 Claude 형식을 생성해주세요.');
+                return;
+            }
+
+            navigator.clipboard.writeText(claudePrompt).then(() => {
+                alert('Claude 프롬프트가 클립보드에 복사되었습니다!');
+            }).catch(() => {
+                alert('클립보드 복사에 실패했습니다.');
+            });
+        }
+
+        // Google Sheets 테스트
+        async function testGoogleSheets() {
+            showResult('sheets-result', null, true);
+            const result = await callAPI('/api/terminology/test-sheets');
+            showResult('sheets-result', result);
+        }
+
+        // 통합 설정 가이드
+        function showIntegrationGuide() {
+            const guide = {
+                status: 'info',
+                message: 'Google Sheets 설정 가이드',
+                steps: [
+                    '1. Google Cloud Platform에서 프로젝트 생성',
+                    '2. Google Sheets API 활성화',
+                    '3. Service Account 생성 및 JSON 키 다운로드',
+                    '4. Google Sheets 스프레드시트 생성 (3개 탭: Terminology, Exceptions, Metadata)',
+                    '5. Service Account에 스프레드시트 공유',
+                    '6. 환경 변수 설정:'
+                ],
+                environment_variables: {
+                    'GOOGLE_SHEETS_ENABLED': 'true',
+                    'GOOGLE_SHEETS_ID': 'your_spreadsheet_id',
+                    'GOOGLE_SHEETS_CREDENTIALS': '/path/to/service-account.json'
+                },
+                note: '현재는 JSON API로 테스트 중이며, 실제 Google Sheets 연동은 위 설정 완료 후 가능합니다.'
+            };
+            showResult('sheets-result', guide);
+        }
+
+        // 페이지 로드 시 자동으로 시스템 상태 확인
+        window.onload = function() {
+            testSystemStatus();
+        };
+    </script>
+</body>
+</html>

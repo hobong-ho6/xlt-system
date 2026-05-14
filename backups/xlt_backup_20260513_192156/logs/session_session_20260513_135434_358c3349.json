@@ -1,0 +1,148 @@
+{
+  "start_time": "2026-05-13 14:14:34.029913",
+  "request_data": {
+    "endpoint": "/translate-selected",
+    "method": "POST",
+    "data_keys": [
+      "session_id",
+      "xlt_keys"
+    ],
+    "session_id": "session_20260513_135434_358c3349",
+    "xlt_keys_count": 59,
+    "request_size": 732
+  },
+  "steps": [
+    {
+      "timestamp": "2026-05-13T14:14:34.031994",
+      "step": "요청 데이터 파싱 완료",
+      "data": {
+        "session_id": "session_20260513_135434_358c3349",
+        "xlt_keys": [
+          "text_item",
+          "text_item_1",
+          "text_item_2",
+          "text_item_3",
+          "text_item_4",
+          "text_item_5",
+          "text_item_6",
+          "text_item_7",
+          "usdt",
+          "usdt_1",
+          "wallet",
+          "wallet_1",
+          "text_item_8",
+          "text_item_9",
+          "0",
+          "unifi",
+          "trade",
+          "text_item_10",
+          "unifi_1",
+          "text_item_11",
+          "unifi_2",
+          "mission",
+          "usdt_2",
+          "mission_1",
+          "usdt_3",
+          "text_item_12",
+          "0_usdt",
+          "usdt_4",
+          "0_1",
+          "0_1_1",
+          "text_item_13",
+          "idrp_usdt",
+          "0_2",
+          "usdt_5",
+          "text_item_14",
+          "limited_0_1_2_3",
+          "usdt_0",
+          "0_3",
+          "prime",
+          "vip",
+          "vip_1",
+          "vip_2",
+          "text_item_15",
+          "unifi_3",
+          "text_item_16",
+          "usdt_6",
+          "0_4",
+          "0_5",
+          "0_usdt_1",
+          "text_item_17",
+          "usdt_0_1",
+          "idrp",
+          "0_6",
+          "usdt_7",
+          "idrp_1",
+          "0_1_2",
+          "assets",
+          "my",
+          "home"
+        ],
+        "data_size": 732
+      }
+    },
+    {
+      "timestamp": "2026-05-13T14:14:34.051998",
+      "step": "번역기 연결 테스트 시작",
+      "data": {
+        "translator_type": "ClaudeTranslator",
+        "translation_mode": "claude_integrated",
+        "has_test_connection": true
+      }
+    },
+    {
+      "timestamp": "2026-05-13T14:14:34.054258",
+      "step": "연결 테스트 결과 검증",
+      "data": {
+        "connection_status_type": "bool",
+        "connection_status_value": true,
+        "final_translation_mode": "claude_integrated",
+        "final_engine_name": "Claude 통합 처리 (맞춤법+번역)"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T14:14:34.055955",
+      "step": "번역 배치 처리 시작",
+      "data": {
+        "text_count": 59,
+        "language_count": 5,
+        "translator_class": "ClaudeTranslator",
+        "translation_mode": "claude_integrated"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T14:14:34.159695",
+      "step": "Claude 청크 배치 처리 시작",
+      "data": {
+        "method": "translate_batch_integrated_chunked",
+        "text_count": 59,
+        "target_languages": [
+          "ko_KR",
+          "en_US",
+          "ja_JP",
+          "zh_TW",
+          "th_TH"
+        ],
+        "chunk_size": 1,
+        "translator_class": "ClaudeTranslator"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T14:25:39.954189",
+      "step": "번역 실패로 세션 종료",
+      "data": {
+        "error_type": "UnboundLocalError",
+        "error_message": "local variable 'translated_results' referenced before assignment",
+        "translation_mode": "claude_integrated",
+        "traceback_lines": 5
+      }
+    }
+  ],
+  "error": {
+    "timestamp": "2026-05-13T14:25:39.953871",
+    "error_type": "UnboundLocalError",
+    "error_message": "local variable 'translated_results' referenced before assignment",
+    "context": "번역 실행 중 최종 에러",
+    "traceback": "Traceback (most recent call last):\n  File \"/Users/user/XLT-System/stable_web_server.py\", line 2958, in translate_selected\n    if translated_results:\nUnboundLocalError: local variable 'translated_results' referenced before assignment\n"
+  }
+}

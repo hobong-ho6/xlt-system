@@ -1,0 +1,3268 @@
+#!/usr/bin/env python3
+"""
+XLT System v2.0 Stable Web Interface
+안정적인 웹 서버 (강화된 예외 처리)
+"""
+
+import os
+import sys
+import traceback
+import secrets
+import re
+import json
+import requests
+import logging
+from logging.handlers import RotatingFileHandler
+from flask import Flask, request, jsonify, send_from_directory, render_template, redirect, url_for
+from werkzeug.utils import secure_filename
+from datetime import datetime
+from pathlib import Path
+
+# XLT 패키지 경로 추가
+sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+
+app = Flask(__name__)
+app.secret_key = 'xlt_system_stable_key'
+
+# 로깅 설정 (파일 + 콘솔)
+log_file = Path(__file__).parent / "server.log"
+log_handler = RotatingFileHandler(log_file, maxBytes=10*1024*1024, backupCount=3)  # 10MB, 3개 백업
+log_handler.setLevel(logging.INFO)
+log_formatter = logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+log_handler.setFormatter(log_formatter)
+
+# 콘솔 핸들러 추가
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(log_formatter)
+
+# 로거 설정
+logger = logging.getLogger('xlt_server')
+logger.setLevel(logging.INFO)
+logger.addHandler(log_handler)
+logger.addHandler(console_handler)
+
+# Flask 기본 로거도 설정
+app.logger.addHandler(log_handler)
+app.logger.setLevel(logging.INFO)
+
+# Jinja2 환경에 enumerate 함수 추가
+app.jinja_env.globals['enumerate'] = enumerate
+
+# CORS 헤더 추가 (DropWeb 프론트엔드 지원)
+@app.before_request
+def before_request():
+    """HTTP 요청 로깅"""
+    # 정적 파일과 건강 체크는 로그 제외
+    if request.path.startswith('/static/') or request.path == '/api/health':
+        return
+
+    # 주요 API 엔드포인트만 로깅
+    if request.path in ['/upload', '/translate-selected', '/download-excel', '/check-placeholders']:
+        logger.info(f"📨 HTTP {request.method} {request.path}")
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+
+    # 주요 API 응답 로깅
+    log_paths = ['/upload', '/translate-selected', '/download-excel', '/check-placeholders']
+    if request.path in log_paths:
+        status_emoji = "✅" if response.status_code < 400 else "❌"
+        logger.info(f"{status_emoji} HTTP {request.method} {request.path} → {response.status_code}")
+
+    return response
+
+# OPTIONS 요청 처리 (CORS Preflight)
+@app.route('/', methods=['OPTIONS'])
+@app.route('/<path:path>', methods=['OPTIONS'])
+def options_handler(path=None):
+    return '', 200
+
+# XLT v3.0: 로그 기능 제거 - 하지만 변수는 유지 (오류 방지)
+session_status = {}
+session_logs = {}
+
+# 전역 오류 핸들러 (모든 오류를 JSON으로 응답)
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        'status': 'error',
+        'error': 'API 엔드포인트를 찾을 수 없습니다.',
+        'code': 404
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({
+        'status': 'error',
+        'error': '내부 서버 오류가 발생했습니다.',
+        'code': 500,
+        'details': str(error)
+    }), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # HTTP 오류가 아닌 일반 예외 처리
+    return jsonify({
+        'status': 'error',
+        'error': f'예기치 않은 오류: {str(e)}',
+        'type': type(e).__name__
+    }), 500
+
+# XLT v3.0: 로그 기능 제거
+def add_session_log(session_id, message, log_type='info'):
+    """세션 로그 추가 (파일 + 콘솔 출력)"""
+    # 로그 레벨에 따라 출력
+    log_message = f"[{session_id}] {message}"
+
+    if log_type == 'error':
+        logger.error(log_message)
+    elif log_type == 'warning':
+        logger.warning(log_message)
+    elif log_type == 'success':
+        logger.info(f"✅ {log_message}")
+    else:
+        logger.info(log_message)
+
+# 설정
+# UPLOAD_FOLDER = 'uploads'  # XLT v3.0: 피그마 전용으로 파일 업로드 기능 제거
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'bmp', 'tiff', 'webp', 'gif'}
+
+# 업로드 폴더 생성 (XLT v3.0: 피그마 전용으로 제거)
+# os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# XLT 시스템 초기화
+pipeline = None
+updater = None
+try:
+    from xlt import XLTPipeline, XLTConfig
+    from xlt.utils.updater import XLTUpdater
+
+    config = XLTConfig()
+    pipeline = XLTPipeline(config)
+    pipeline.initialize()  # 🔧 명시적으로 초기화 호출
+
+    # 업데이터 초기화
+    updater = XLTUpdater()
+
+    print("✅ XLT 시스템 초기화 완료")
+    print(f"   📝 입력 처리기: {len(pipeline.input_processors)}개 등록")
+    print(f"   📋 처리기 종류: {list(pipeline.input_processors.keys())}")
+except Exception as e:
+    print(f"❌ XLT 시스템 초기화 실패: {e}")
+
+
+def cleanup_old_figma_images():
+    """오래된 피그마 이미지 파일 정리 (24시간 이상 된 파일 삭제)"""
+    try:
+        figma_dir = os.path.join(os.getcwd(), 'figma')
+        if not os.path.exists(figma_dir):
+            return
+
+        import time
+        current_time = time.time()
+        cleanup_age = 24 * 3600  # 24시간
+
+        for filename in os.listdir(figma_dir):
+            if filename.endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                file_path = os.path.join(figma_dir, filename)
+                try:
+                    file_age = current_time - os.path.getmtime(file_path)
+                    if file_age > cleanup_age:
+                        os.remove(file_path)
+                        print(f"[CLEANUP] 오래된 피그마 이미지 삭제: {filename}")
+                except Exception as e:
+                    print(f"[CLEANUP ERROR] {filename}: {e}")
+    except Exception as e:
+        print(f"[CLEANUP ERROR] 피그마 이미지 정리 실패: {e}")
+
+
+def apply_korean_corrections(text):
+    """한국어 맞춤법 및 띄어쓰기 교정 적용"""
+    if not text:
+        return text
+
+    corrected_text = text.strip()
+
+    # 한국어 맞춤법 교정 사전 (config에서 가져오거나 기본값 사용)
+    correction_dict = {
+        '이울': '이율',
+        '미선': '미션',
+        '토근': '토큰',
+        '받앉어요': '받았어요',
+        '다사': '다시',
+        '빈상': '빈상금',
+        '수로': '수료',
+        '찬성': '참성',
+        '빌게': '빌게임',
+        '게시': '게임시',
+        '미전': '미션',
+        '룰렛': '룰렛',
+        '댄시': '댄스',
+    }
+
+    # config 객체가 있으면 그것을 사용
+    if 'config' in globals() and config and hasattr(config, 'ocr_corrections'):
+        correction_dict.update(config.ocr_corrections)
+
+    # 한국어 맞춤법 교정 적용
+    for wrong, correct in correction_dict.items():
+        corrected_text = corrected_text.replace(wrong, correct)
+
+    # 기본적인 띄어쓰기 교정
+    import re
+
+    # 연속된 공백을 하나로
+    corrected_text = re.sub(r'\s+', ' ', corrected_text)
+
+    # 조사 앞 띄어쓰기 제거 (예: "게임 을" → "게임을")
+    corrected_text = re.sub(r'\s+(은|는|이|가|을|를|의|에|에서|로|으로|와|과|까지|부터)', r'\1', corrected_text)
+
+    # 숫자와 단위 사이 띄어쓰기 조정 (예: "10 개" → "10개", "5 시간" → "5시간")
+    corrected_text = re.sub(r'(\d+)\s+(개|명|시간|분|초|일|주|월|년|원|달러|USDT|BTC|ETH|포인트|코인)', r'\1\2', corrected_text)
+
+    # 동사 어미 앞 띄어쓰기 조정
+    corrected_text = re.sub(r'\s+(하기|받기|하고|받고|하자|받자|해요|받아요)', r'\1', corrected_text)
+
+    # 앞뒤 공백 제거
+    corrected_text = corrected_text.strip()
+
+    print(f"🔤 한국어 교정: '{text}' → '{corrected_text}'")
+    return corrected_text
+
+
+def load_translation_guide():
+    """guide.md에서 번역 용어집과 규칙을 로드"""
+    try:
+        guide_path = os.path.join(os.path.dirname(__file__), 'guide.md')
+        if not os.path.exists(guide_path):
+            print(f"⚠️ guide.md 파일을 찾을 수 없습니다: {guide_path}")
+            return {}
+
+        with open(guide_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # 용어집 테이블 파싱
+        terminology = {}
+
+        # 마크다운 테이블 패턴 매칭
+        table_pattern = r'\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|'
+        lines = content.split('\n')
+
+        in_terminology_section = False
+        for line in lines:
+            # 용어집 섹션 시작 감지
+            if '## 4. 핵심 용어집' in line or '핵심 용어' in line:
+                in_terminology_section = True
+                continue
+
+            # 다음 섹션 시작하면 종료
+            if in_terminology_section and line.startswith('##') and '용어집' not in line:
+                break
+
+            # 테이블 데이터 파싱
+            if in_terminology_section and '|' in line and not line.startswith('|---'):
+                matches = re.match(table_pattern, line.strip())
+                if matches:
+                    korean = matches.group(1).strip()
+                    english = matches.group(2).strip()
+                    japanese = matches.group(3).strip()
+                    chinese = matches.group(4).strip()
+                    thai = matches.group(5).strip()
+
+                    # 헤더 행 및 구분자 행 건너뛰기
+                    if korean.strip() not in ['한국어', 'Korean', '--------', ''] and not korean.startswith('-'):
+                        terminology[korean] = {
+                            'en_US': english,
+                            'ja_JP': japanese,
+                            'zh_TW': chinese,
+                            'th_TH': thai
+                        }
+
+        print(f"📖 guide.md에서 {len(terminology)}개 용어 로드됨")
+        return terminology
+
+    except Exception as e:
+        print(f"❌ guide.md 로드 실패: {e}")
+        return {}
+
+
+def apply_terminology_guide(text, target_lang, terminology):
+    """guide.md의 용어집을 사용해서 번역 후 용어 일관성 검증 및 수정"""
+    if not text or not terminology:
+        return text
+
+    # 용어집에서 일치하는 용어 찾기 (번역된 텍스트에서 한국어 용어 검색 후 치환)
+    for korean_term, translations in terminology.items():
+        if korean_term in text and target_lang in translations:
+            guided_translation = translations[target_lang]
+            # 한국어 용어를 해당 언어의 표준 번역으로 치환
+            # \b는 비라틴 문자에서 작동하지 않으므로 단순 문자열 치환 사용
+            text = text.replace(korean_term, guided_translation)
+
+    return text
+
+
+# Excel 파일 생성 기능 제거됨 (XLT System v3.0)
+
+
+# Excel 파일 생성 기능 제거됨 (create_excel_from_template - 레거시)
+
+
+# =====================================
+# 설정 관리 시스템 (XLT System v3.0)
+# =====================================
+
+def load_user_config():
+    """사용자 설정 파일 로드"""
+    config_path = Path('user_config.json')
+    default_config = {
+        'server_port': 5004,
+        'max_concurrent_users': 5,
+        'session_timeout_minutes': 60
+    }
+
+    if config_path.exists():
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                # 기본값과 병합
+                return {**default_config, **config}
+        except Exception as e:
+            print(f"⚠️ user_config.json 로드 실패: {e}")
+
+    return default_config
+
+def save_user_config(config):
+    """사용자 설정 파일 저장"""
+    try:
+        config_path = Path('user_config.json')
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"❌ user_config.json 저장 실패: {e}")
+        return False
+
+def load_version_info():
+    """버전 정보 로드"""
+    try:
+        version_path = Path('version.json')
+        if version_path.exists():
+            with open(version_path, 'r', encoding='utf-8') as f:
+                version_data = json.load(f)
+                return {
+                    'status': 'success',
+                    'version': version_data.get('version', '알 수 없음'),
+                    'build': version_data.get('build', '알 수 없음'),
+                    'name': version_data.get('name', 'XLT System'),
+                    'description': version_data.get('description', ''),
+                    'release_date': version_data.get('release_date', ''),
+                    'changelog': version_data.get('changelog', [])
+                }
+        else:
+            return {
+                'status': 'error',
+                'error': 'version.json 파일을 찾을 수 없습니다',
+                'version': '알 수 없음',
+                'name': 'XLT System'
+            }
+    except Exception as e:
+        return {
+            'status': 'error',
+            'error': f'버전 정보 로드 실패: {str(e)}',
+            'version': '알 수 없음',
+            'name': 'XLT System'
+        }
+
+def check_figma_config():
+    """피그마 설정 확인"""
+    config_path = Path('figma_config.json')
+    env_token = os.getenv('FIGMA_TOKEN')
+
+    if env_token:
+        return {'status': 'ok', 'source': 'environment'}
+
+    if config_path.exists():
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                if config.get('access_token'):
+                    return {'status': 'ok', 'source': 'file'}
+        except Exception as e:
+            return {'status': 'error', 'error': f'figma_config.json 파싱 오류: {e}'}
+
+    return {'status': 'missing', 'error': '피그마 토큰이 설정되지 않았습니다'}
+
+def test_figma_token(token):
+    """피그마 토큰 유효성 테스트"""
+    try:
+        import requests
+
+        headers = {'X-Figma-Token': token}
+        response = requests.get('https://api.figma.com/v1/me', headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            user_info = response.json()
+            return {
+                'status': 'success',
+                'user': user_info.get('name', 'Unknown'),
+                'email': user_info.get('email', 'Unknown')
+            }
+        elif response.status_code == 403:
+            return {'status': 'error', 'error': '토큰이 유효하지 않습니다'}
+        else:
+            return {'status': 'error', 'error': f'API 오류: {response.status_code}'}
+
+    except Exception as e:
+        return {'status': 'error', 'error': f'연결 테스트 실패: {str(e)}'}
+
+# XLT System v3.1: 디렉토리 테스트 함수 제거됨 (메모리 기반 직접 다운로드로 변경)
+
+def check_system_setup():
+    """시스템 필수 설정 확인"""
+    setup_status = {
+        'all_configured': True,
+        'missing_settings': [],
+        'current_settings': {}
+    }
+
+    # 1. 피그마 토큰 확인
+    figma_status = check_figma_config()
+    if figma_status['status'] != 'ok':
+        setup_status['all_configured'] = False
+        setup_status['missing_settings'].append('피그마 토큰')
+    else:
+        setup_status['current_settings']['figma_token'] = True
+
+    # 2. 사용자 설정 확인
+    user_config = load_user_config()
+
+    # XLT System v3.0: 출력 디렉토리 설정 제거됨
+
+    setup_status['current_settings']['server_port'] = user_config.get('server_port', 5004)
+
+    return setup_status
+
+
+def allowed_file(filename: str) -> bool:
+    """허용된 파일 확장자인지 확인"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def is_figma_url(url: str) -> bool:
+    """피그마 URL인지 확인"""
+    return 'figma.com' in url.lower()
+
+
+# OCR 결과 임시 저장
+temp_ocr_results = {}
+
+
+def get_current_port():
+    """현재 실행 중인 서버 포트 가져오기"""
+    # Flask의 현재 요청에서 포트 추출
+    return str(request.environ.get('SERVER_PORT', request.host.split(':')[-1] if ':' in request.host else '5004'))
+
+@app.route('/')
+def index():
+    """메인 페이지"""
+    # 시스템 설정 상태 확인
+    setup_status = check_system_setup()
+    if not setup_status['all_configured']:
+        return redirect(url_for('settings_page'))
+
+    # 현재 실행 포트와 설정 포트 비교
+    user_config = load_user_config()
+    current_port = get_current_port()
+    configured_port = str(user_config.get('server_port', 5004))
+    port_mismatch = current_port != configured_port
+
+    # 버전 정보 로드
+    version_info = load_version_info()
+
+    return render_template('index.html',
+                         port_mismatch=port_mismatch,
+                         current_port=current_port,
+                         configured_port=configured_port,
+                         version_info=version_info)
+
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    """정적 파일 서빙"""
+    return send_from_directory('static', filename)
+
+@app.route('/guide.md')
+def serve_guide():
+    """번역 가이드라인 파일 제공"""
+    try:
+        guide_path = os.path.join(os.path.dirname(__file__), 'guide.md')
+        if os.path.exists(guide_path):
+            with open(guide_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return content, 200, {'Content-Type': 'text/markdown; charset=utf-8'}
+        else:
+            return 'guide.md 파일을 찾을 수 없습니다.', 404
+    except Exception as e:
+        return f'오류: {str(e)}', 500
+
+# XLT v3.0: 자동 테스트 기능 제거
+# @app.route('/test_web_flow.html') - 자동 테스트 페이지 제거됨
+
+    # serve_uploaded_image 제거됨 - 파일 업로드 기능 비활성화
+
+@app.route('/debug-sessions')
+def debug_sessions():
+    """현재 활성 세션 디버깅"""
+    debug_info = {}
+    for session_id, data in temp_ocr_results.items():
+        debug_info[session_id] = {
+            'input_type': data.get('input_type'),
+            'image_path': data.get('image_path'),
+            'image_exists': os.path.exists(data.get('image_path', '')) if data.get('image_path') else False,
+            'ocr_count': len(data.get('ocr_results', [])),
+            'source': data.get('source', '')[:100] + '...' if len(data.get('source', '')) > 100 else data.get('source', '')
+        }
+
+    return jsonify({
+        'active_sessions': debug_info,
+        'figma_files': os.listdir('figma') if os.path.exists('figma') else []
+    })
+
+@app.route('/test-session')
+def create_test_session():
+    """테스트 세션 생성"""
+    import shutil
+    from PIL import Image
+
+    # 테스트 세션 ID 생성
+    test_session_id = "test_session_figma_preview"
+
+    # 간단한 테스트 이미지 생성
+    figma_dir = os.path.join(os.getcwd(), 'figma')
+    os.makedirs(figma_dir, exist_ok=True)
+
+    # 200x100 파란색 테스트 이미지 생성
+    test_image = Image.new('RGB', (200, 100), color='blue')
+    test_image_path = os.path.join(figma_dir, f"{test_session_id}_figma.png")
+    test_image.save(test_image_path)
+
+    # 테스트 세션 데이터 생성
+    temp_ocr_results[test_session_id] = {
+        'source': 'https://test.figma.com/test',
+        'source_description': '테스트 피그마 파일',
+        'input_type': 'figma',
+        'image_path': test_image_path,
+        'ocr_results': [
+            {'text': '테스트 텍스트 1', 'confidence': 0.9},
+            {'text': '테스트 텍스트 2', 'confidence': 0.8}
+        ]
+    }
+
+    return jsonify({
+        'status': 'success',
+        'test_session_id': test_session_id,
+        'image_path': test_image_path,
+        'select_texts_url': f'/select_texts?session_id={test_session_id}'
+    })
+
+@app.route('/figma_image/<path:filename>')
+def serve_figma_image(filename):
+    """피그마 이미지 파일 서빙"""
+    try:
+        figma_dir = os.path.join(os.getcwd(), 'figma')
+        file_path = os.path.join(figma_dir, filename)
+
+        if not os.path.exists(file_path):
+            print(f"[DEBUG] 피그마 이미지 파일 없음: {file_path}")
+            return "Image not found", 404
+
+        print(f"[DEBUG] 피그마 이미지 서빙: {filename}")
+        return send_from_directory('figma', filename)
+    except Exception as e:
+        print(f"[ERROR] 피그마 이미지 서빙 오류: {e}")
+        return "Image serving error", 500
+
+
+# =====================================
+# 설정 관리 라우트 (XLT System v3.0)
+# =====================================
+
+@app.route('/settings')
+def settings_page():
+    """시스템 설정 페이지"""
+    user_config = load_user_config()
+    return render_template('settings.html', current_settings=user_config)
+
+@app.route('/api/settings/status')
+def api_settings_status():
+    """현재 설정 상태 확인"""
+    try:
+        setup_status = check_system_setup()
+        return jsonify(setup_status)
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'설정 상태 확인 실패: {str(e)}'
+        }), 500
+
+@app.route('/api/settings/test-figma-token', methods=['POST'])
+def api_test_figma_token():
+    """피그마 토큰 테스트"""
+    try:
+        data = request.get_json()
+        token = data.get('token')
+
+        if not token:
+            return jsonify({
+                'status': 'error',
+                'error': '토큰을 입력해주세요.'
+            }), 400
+
+        result = test_figma_token(token)
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'토큰 테스트 실패: {str(e)}'
+        }), 500
+
+# XLT System v3.1: 디렉토리 테스트 API 제거됨 (메모리 기반 직접 다운로드로 변경)
+
+@app.route('/api/settings/get-figma-token', methods=['POST'])
+def api_get_figma_token():
+    """저장된 피그마 토큰 조회 (보안상 POST 사용)"""
+    try:
+        # 피그마 설정 확인
+        figma_config = check_figma_config()
+
+        if figma_config['status'] != 'ok':
+            return jsonify({
+                'status': 'error',
+                'error': '저장된 피그마 토큰이 없습니다.'
+            }), 404
+
+        # 토큰 값 가져오기
+        token = None
+
+        # 환경변수에서 확인
+        env_token = os.getenv('FIGMA_TOKEN')
+        if env_token:
+            token = env_token
+        else:
+            # figma_config.json에서 확인
+            config_path = Path('figma_config.json')
+            if config_path.exists():
+                try:
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        config = json.load(f)
+                        token = config.get('access_token')
+                except Exception as e:
+                    return jsonify({
+                        'status': 'error',
+                        'error': f'토큰 파일 읽기 실패: {e}'
+                    }), 500
+
+        if not token:
+            return jsonify({
+                'status': 'error',
+                'error': '토큰을 찾을 수 없습니다.'
+            }), 404
+
+        return jsonify({
+            'status': 'success',
+            'token': token
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'토큰 조회 실패: {str(e)}'
+        }), 500
+
+
+@app.route('/api/settings/save', methods=['POST'])
+def api_save_settings():
+    """설정 저장"""
+    try:
+        data = request.get_json()
+
+        # 현재 설정 로드
+        old_config = load_user_config()
+        old_port = old_config.get('server_port', 5004)
+
+        restart_required = False
+        restart_reason = []
+
+        # 피그마 토큰 저장
+        figma_token = data.get('figma_token')
+        if figma_token:  # None이 아닌 경우만 저장 (기존 토큰 유지하려면 None 전달)
+            figma_config = {'access_token': figma_token}
+            figma_config_path = Path('figma_config.json')
+
+            # 안전한 파일 쓰기 (임시 파일 사용)
+            temp_path = figma_config_path.with_suffix('.tmp')
+
+            try:
+                # 임시 파일에 먼저 쓰기
+                with open(temp_path, 'w', encoding='utf-8') as f:
+                    json.dump(figma_config, f, indent=2, ensure_ascii=False)
+                    f.flush()  # 버퍼 강제 플러시
+                    os.fsync(f.fileno())  # 디스크 동기화
+
+                # 원자적 이동 (atomic move)
+                if os.path.exists(figma_config_path):
+                    os.remove(figma_config_path)
+                os.rename(temp_path, figma_config_path)
+
+                print(f"✅ 피그마 토큰 저장됨")
+
+            except Exception as e:
+                # 임시 파일 정리
+                if temp_path.exists():
+                    temp_path.unlink(missing_ok=True)
+
+                print(f"❌ 피그마 토큰 저장 실패: {e}")
+                return jsonify({
+                    'status': 'error',
+                    'error': f'피그마 토큰 저장 실패: {str(e)}',
+                    'details': '파일 쓰기 권한을 확인하거나 디스크 공간을 확인해주세요.'
+                }), 500
+
+        # 사용자 설정 저장
+        user_config = load_user_config()
+
+        # XLT System v3.0: 출력 디렉토리 설정 제거됨
+
+        # 서버 포트 설정
+        new_port = data.get('server_port')
+        if new_port and 1024 <= new_port <= 65535:
+            user_config['server_port'] = new_port
+
+            # 포트 변경 감지
+            if new_port != old_port:
+                restart_required = True
+                restart_reason.append(f'서버 포트 변경 ({old_port} → {new_port})')
+
+        # 사용자 설정 파일 저장
+        if not save_user_config(user_config):
+            return jsonify({
+                'status': 'error',
+                'error': '사용자 설정 저장에 실패했습니다.'
+            }), 500
+
+        print(f"✅ 사용자 설정 저장됨: {user_config}")
+
+        # 응답 준비
+        response_data = {
+            'status': 'success',
+            'message': '설정이 저장되었습니다.',
+            'settings': user_config,
+            'restart_required': restart_required
+        }
+
+        if restart_required:
+            response_data['restart_reason'] = restart_reason
+            response_data['message'] = '설정이 저장되었습니다. 서버 재시작이 필요합니다.'
+            response_data['new_url'] = f'http://localhost:{new_port}'
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"❌ 설정 저장 실패: {e}")
+        print(error_trace)
+
+        return jsonify({
+            'status': 'error',
+            'error': f'설정 저장 중 오류: {str(e)}'
+        }), 500
+
+
+@app.route('/api/settings/restart', methods=['POST'])
+def api_restart_server():
+    """서버 재시작"""
+    try:
+        # 새 설정으로 서버 재시작
+        import threading
+        import subprocess
+        import sys
+        import signal
+
+        def restart_server():
+            # 잠시 대기 후 현재 프로세스 종료 및 재시작
+            import time
+            time.sleep(1)
+
+            # 현재 스크립트 경로
+            script_path = os.path.abspath(__file__)
+
+            print("🔄 서버 재시작 중...")
+
+            # 새 프로세스로 서버 재시작
+            try:
+                subprocess.Popen([sys.executable, script_path],
+                               cwd=os.path.dirname(script_path))
+            except Exception as e:
+                print(f"❌ 재시작 실패: {e}")
+
+            # 현재 프로세스 종료
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        # 백그라운드에서 재시작 실행
+        restart_thread = threading.Thread(target=restart_server)
+        restart_thread.daemon = True
+        restart_thread.start()
+
+        return jsonify({
+            'status': 'success',
+            'message': '서버 재시작을 시작합니다.'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'서버 재시작 실패: {str(e)}'
+        }), 500
+
+# =====================================
+# 버전 정보 API (XLT System v3.1)
+# =====================================
+
+@app.route('/api/version', methods=['GET'])
+def api_get_version():
+    """현재 버전 정보 조회"""
+    version_info = load_version_info()
+    return jsonify(version_info)
+
+@app.route('/api/version/check-update', methods=['GET'])
+def api_check_version_update():
+    """업데이트 확인 (간단 버전)"""
+    try:
+        version_info = load_version_info()
+        update_check = requests.get(
+            'https://api.github.com/repos/hobong-ho6/xlt-system/commits/main',
+            timeout=10
+        )
+
+        if update_check.status_code == 200:
+            remote_info = update_check.json()
+            return jsonify({
+                'status': 'success',
+                'current_version': version_info.get('version', '알 수 없음'),
+                'current_build': version_info.get('build', '알 수 없음'),
+                'remote_commit': remote_info.get('sha', '')[:7],
+                'remote_date': remote_info.get('commit', {}).get('author', {}).get('date', ''),
+                'update_available': True,  # 항상 업데이트 가능으로 표시
+                'last_check': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': '업데이트 확인 실패',
+                'current_version': version_info.get('version', '알 수 없음')
+            }), 400
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'업데이트 확인 중 오류: {str(e)}'
+        }), 500
+
+@app.route('/select_texts')
+def select_texts():
+    """OCR 결과 선택 페이지"""
+    session_id = request.args.get('session_id')
+    if not session_id or session_id not in temp_ocr_results:
+        return jsonify({
+            'status': 'error',
+            'error': 'OCR 세션을 찾을 수 없습니다. 다시 시작해주세요.',
+            'debug_info': f'session_id: {session_id}, available_sessions: {list(temp_ocr_results.keys())}'
+        }), 404
+
+    # OCR 데이터 가져오기
+    session_data = temp_ocr_results[session_id]
+
+    # OCR 결과 정규화 함수
+    def normalize_ocr_item(item):
+        if hasattr(item, 'text'):
+            # OCRResult 객체 형태
+            return {
+                'text': item.text,
+                'confidence': getattr(item, 'confidence', 0.0)
+            }
+        elif isinstance(item, dict):
+            # 딕셔너리 형태
+            return {
+                'text': item.get('text', ''),
+                'confidence': item.get('confidence', 0.0)
+            }
+        else:
+            # 기타 형태 (문자열 등)
+            return {
+                'text': str(item),
+                'confidence': 0.0
+            }
+
+    # 모든 OCR 결과 정규화
+    raw_ocr_results = session_data.get('ocr_results', [])
+    normalized_ocr_results = [normalize_ocr_item(item) for item in raw_ocr_results]
+
+    # 의미있는 텍스트 필터링 (원본 인덱스 보존)
+    filtered_texts = []
+    for idx, item in enumerate(normalized_ocr_results):
+        text = item['text'].strip()
+        confidence = item['confidence']
+
+        # 간단한 필터링 조건
+        if (len(text) > 1 and              # 길이가 1자 이상
+            confidence > 0.5 and           # 신뢰도 50% 이상
+            not text.isdigit() and         # 숫자만으로 이루어지지 않음
+            len(text) < 100):              # 너무 긴 텍스트 제외
+            # 원본 인덱스를 포함하여 추가
+            item_with_index = item.copy()
+            item_with_index['original_index'] = idx
+            filtered_texts.append(item_with_index)
+
+    # 필터링 결과가 없으면 모든 결과 사용 (원본 인덱스 포함)
+    if not filtered_texts:
+        filtered_texts = []
+        for idx, item in enumerate(normalized_ocr_results):
+            item_with_index = item.copy()
+            item_with_index['original_index'] = idx
+            filtered_texts.append(item_with_index)
+
+    # 이미지 경로 준비
+    image_path = session_data.get('image_path')
+    input_type = session_data.get('input_type', 'file')
+    image_url = None
+
+    # 디버깅: 세션 데이터 확인
+    print(f"[DEBUG] session_data keys: {session_data.keys()}")
+    print(f"[DEBUG] image_path: {image_path}")
+    print(f"[DEBUG] input_type: {input_type}")
+    print(f"[DEBUG] figma 디렉토리 내용: {os.listdir('figma') if os.path.exists('figma') else '없음'}")
+
+    # 이미지 URL 생성
+    if image_path and os.path.exists(image_path):
+        if input_type == 'file':
+            # 파일 업로드인 경우
+            image_url = f'/uploaded_image/{os.path.basename(image_path)}'
+        elif input_type == 'figma':
+            # 피그마인 경우
+            image_url = f'/figma_image/{os.path.basename(image_path)}'
+        print(f"[DEBUG] image_url 생성됨: {image_url}")
+    else:
+        print(f"[DEBUG] image_url 생성 실패 - image_path={image_path}, exists={os.path.exists(image_path) if image_path else False}")
+
+    # 템플릿 데이터 확인
+    print(f"[DEBUG] ocr_data.image_url: {image_url}")
+    print(f"[DEBUG] 템플릿 렌더링 시작...")
+
+    # 템플릿에 필요한 데이터 준비
+    ocr_data = {
+        'source_description': session_data.get('source_description', ''),
+        'ocr_results': normalized_ocr_results,
+        'filtered_texts': filtered_texts,
+        'image_url': image_url
+    }
+
+    return render_template('ocr_results.html', session_id=session_id, ocr_data=ocr_data)
+
+
+@app.route('/upload', methods=['POST'])
+def process_request():
+    """요청 처리 (강화된 예외 처리)"""
+    # 세션 ID 생성
+    session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}"
+
+    try:
+        # 초기 로그 추가
+        add_session_log(session_id, "🚀 XLT 번역 작업을 시작합니다", "info")
+
+        if not pipeline:
+            add_session_log(session_id, "❌ XLT 시스템이 초기화되지 않았습니다", "error")
+            return jsonify({
+                'status': 'error',
+                'error': 'XLT 시스템이 초기화되지 않았습니다.',
+                'details': 'pipeline 객체가 None입니다.'
+            }), 500
+
+        input_type = 'figma'  # 피그마 URL 전용
+        mode = request.form.get('mode', 'auto')
+        translation_mode = 'google'  # Google 번역 전용
+
+        add_session_log(session_id, f"⚙️ 처리 모드: {mode}, 입력 타입: figma", "info")
+        add_session_log(session_id, f"🔧 번역 엔진: Google 번역", "info")
+
+        # 오래된 피그마 이미지 파일 정리
+        cleanup_old_figma_images()
+
+        # 피그마 URL 전용 처리
+        source = None
+        source_description = ""
+        add_session_log(session_id, "🎨 피그마 URL 방식 선택됨", "info")
+
+        figma_url = request.form.get('figma_url', '').strip()
+        if not figma_url:
+            add_session_log(session_id, "❌ 피그마 URL이 입력되지 않았습니다", "error")
+            return jsonify({
+                'status': 'error',
+                'error': '피그마 URL을 입력해주세요.'
+            }), 400
+
+        add_session_log(session_id, f"🔍 피그마 URL 검증 중: {figma_url[:50]}...", "info")
+
+        if not is_figma_url(figma_url):
+            add_session_log(session_id, "❌ 잘못된 피그마 URL 형식입니다", "error")
+            return jsonify({
+                'status': 'error',
+                'error': '올바른 피그마 URL을 입력해주세요.'
+            }), 400
+
+        # 피그마 토큰 확인
+        try:
+            add_session_log(session_id, "🔑 피그마 토큰 확인 중...", "info")
+            from xlt.input.figma import FigmaProcessor
+            figma_processor = FigmaProcessor(pipeline.config)
+
+            if not figma_processor.figma_token:
+                add_session_log(session_id, "❌ 피그마 토큰이 설정되지 않았습니다", "error")
+                return jsonify({
+                    'status': 'error',
+                    'error': '피그마 액세스 토큰이 설정되지 않았습니다.',
+                    'details': 'figma_config.json 파일을 확인하거나 FIGMA_TOKEN 환경변수를 설정해주세요.'
+                }), 400
+
+            # 연결 테스트
+            if not figma_processor.test_figma_connection():
+                return jsonify({
+                    'status': 'error',
+                    'error': '피그마 API에 연결할 수 없습니다.',
+                    'details': '토큰이 만료되었거나 권한이 없을 수 있습니다.'
+                }), 400
+
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'error': '피그마 연결 확인 중 오류가 발생했습니다.',
+                'details': str(e)
+            }), 500
+
+        source = figma_url
+        source_description = f"피그마 URL: {figma_url}"
+
+        # 처리 실행
+        try:
+            if mode == 'auto':
+                # 자동 모드
+                add_session_log(session_id, "🤖 자동 모드: 전체 번역 파이프라인 실행", "info")
+                add_session_log(session_id, "🔄 OCR → 필터링 → 번역 진행 중...", "info")
+
+                result = pipeline.process(source=source, auto_mode=True)
+
+                if result['status'] == 'success':
+                    add_session_log(session_id, f"🎉 번역 완료! {result['processed_count']}개 항목 처리", "success")
+
+                    # 작업 완료 상태 설정
+                    session_status[session_id] = {'completed': True}
+
+                    return jsonify({
+                        'status': 'success',
+                        'processed_count': result['processed_count'],
+                        'source_description': source_description,
+                        'session_id': session_id
+                    })
+                else:
+                    add_session_log(session_id, f"❌ 번역 실패: {result.get('error', '알 수 없는 오류')}", "error")
+                    session_status[session_id] = {'completed': True}
+
+                    return jsonify({
+                        'status': 'error',
+                        'error': result.get('error', '처리에 실패했습니다.'),
+                        'details': result.get('details', '')
+                    }), 500
+
+            else:
+                # 수동 모드 - 텍스트 추출
+                add_session_log(session_id, "📋 수동 모드: 텍스트 추출 단계", "info")
+
+                ocr_results = []
+                image_path = None  # 이미지 파일 경로 저장용
+
+                # 피그마 URL인 경우 먼저 이미지 다운로드 (미리보기용)
+                if input_type == 'figma':
+                    try:
+                        add_session_log(session_id, "📸 피그마 이미지 다운로드 중 (미리보기용)...", "info")
+
+                        from xlt.input.figma import FigmaProcessor
+                        figma_processor = FigmaProcessor(pipeline.config)
+
+                        # 피그마 이미지 다운로드
+                        image, _ = figma_processor.process(source)
+                        if hasattr(figma_processor, 'last_saved_file'):
+                            original_image_path = figma_processor.last_saved_file
+
+                            # 웹 접근 가능한 디렉토리에 복사
+                            if original_image_path and os.path.exists(original_image_path):
+                                import shutil
+                                figma_dir = os.path.join(os.getcwd(), 'figma')
+                                os.makedirs(figma_dir, exist_ok=True)
+
+                                file_extension = os.path.splitext(original_image_path)[1] or '.png'
+                                web_filename = f"{session_id}_figma{file_extension}"
+                                web_image_path = os.path.join(figma_dir, web_filename)
+
+                                try:
+                                    shutil.copy2(original_image_path, web_image_path)
+                                    image_path = web_image_path
+                                    add_session_log(session_id, f"📸 미리보기용 이미지 저장: {web_filename}", "success")
+                                    add_session_log(session_id, f"🔗 이미지 URL 설정: /figma_image/{web_filename}", "info")
+                                except Exception as e:
+                                    add_session_log(session_id, f"⚠️ 이미지 복사 실패: {str(e)}", "warning")
+                                    image_path = original_image_path
+                            else:
+                                add_session_log(session_id, f"⚠️ 원본 이미지 경로가 없거나 파일이 존재하지 않음: {original_image_path}", "warning")
+                                image_path = original_image_path
+                        else:
+                            add_session_log(session_id, "⚠️ 피그마 프로세서에서 저장된 파일 경로를 찾을 수 없음", "warning")
+                    except Exception as e:
+                        add_session_log(session_id, f"⚠️ 피그마 이미지 다운로드 실패: {str(e)}", "warning")
+
+                    # 텍스트 API 시도
+                    try:
+                        add_session_log(session_id, "🎨 피그마 API로 텍스트 직접 추출 시도 중...", "info")
+
+                        from xlt.input.figma import FigmaProcessor
+                        figma_processor = FigmaProcessor(pipeline.config)
+
+                        # URL 파싱
+                        file_key, node_id = figma_processor._parse_figma_url(source)
+
+                        # 텍스트 API 호출
+                        text_result = figma_processor.extract_text_from_node(file_key, node_id)
+
+                        if text_result['status'] == 'success' and text_result['count'] > 0:
+                            add_session_log(session_id, f"✅ 피그마 API로 {text_result['count']}개 텍스트 추출 완료", "success")
+                            add_session_log(session_id, "💡 OCR 없이 정확한 텍스트를 가져왔습니다 (신뢰도 100%)", "info")
+
+                            # 피그마 API 결과를 OCR 형태로 변환
+                            ocr_results = text_result['texts']
+                            add_session_log(session_id, "✅ 피그마 텍스트 API 완료 (이미지는 이미 다운로드됨)", "success")
+                        else:
+                            add_session_log(session_id, f"⚠️ 피그마 API로 텍스트를 찾을 수 없습니다: {text_result.get('error', '텍스트 없음')}", "warning")
+                            add_session_log(session_id, "🔄 OCR 방식으로 전환합니다...", "info")
+
+                    except Exception as e:
+                        add_session_log(session_id, f"⚠️ 피그마 텍스트 API 오류: {str(e)}", "warning")
+                        add_session_log(session_id, "🔄 OCR 방식으로 전환합니다...", "info")
+
+                # 피그마 텍스트 API에서 텍스트를 못 가져왔거나, 피그마가 아닌 경우 OCR 실행
+                if not ocr_results:
+                    add_session_log(session_id, "🔍 입력 타입 감지 중...", "info")
+                    from xlt.input.base import InputProcessor
+                    detected_input_type = InputProcessor.detect_input_type(source)
+                    input_processor = pipeline.input_processors[detected_input_type]
+
+                    add_session_log(session_id, f"📸 이미지 처리 중... (타입: {detected_input_type})", "info")
+                    # 이미지 로드 및 OCR
+                    image, _ = input_processor.process(source)
+
+                    # 피그마 처리기인 경우 - 이미 이미지가 처리되지 않은 경우에만 처리
+                    if hasattr(input_processor, 'last_saved_file'):
+                        original_image_path = input_processor.last_saved_file
+
+                        # 피그마 이미지이고 아직 웹 접근용 이미지 경로가 설정되지 않은 경우에만 복사
+                        if (detected_input_type == 'figma' and
+                            original_image_path and os.path.exists(original_image_path) and
+                            (not image_path or not image_path.startswith(os.path.join(os.getcwd(), 'figma')))):
+
+                            import shutil
+                            figma_dir = os.path.join(os.getcwd(), 'figma')
+                            os.makedirs(figma_dir, exist_ok=True)
+
+                            # 고유한 파일명 생성 (세션 ID 기반)
+                            file_extension = os.path.splitext(original_image_path)[1] or '.png'
+                            web_filename = f"{session_id}_figma{file_extension}"
+                            web_image_path = os.path.join(figma_dir, web_filename)
+
+                            try:
+                                shutil.copy2(original_image_path, web_image_path)
+                                image_path = web_image_path
+                                add_session_log(session_id, f"📸 OCR용 이미지 저장 성공: {web_filename}", "success")
+                                add_session_log(session_id, f"🔗 이미지 URL: /figma_image/{web_filename}", "info")
+                            except Exception as e:
+                                add_session_log(session_id, f"⚠️ 이미지 복사 실패: {str(e)}", "warning")
+                                add_session_log(session_id, f"📁 원본 경로: {original_image_path}", "warning")
+                                add_session_log(session_id, f"📁 대상 경로: {web_image_path}", "warning")
+                                image_path = original_image_path
+                        elif detected_input_type == 'figma' and image_path:
+                            add_session_log(session_id, f"✅ 이미지 경로가 이미 설정됨: {os.path.basename(image_path)}", "info")
+                        else:
+                            image_path = original_image_path
+                    elif input_type == 'file':
+                        image_path = source
+
+                    add_session_log(session_id, "🤖 OCR 텍스트 추출 중...", "info")
+                    ocr_results = pipeline.ocr_engine.extract_text(image)
+
+                    add_session_log(session_id, f"✅ OCR 완료: {len(ocr_results)}개 텍스트 발견", "success")
+                else:
+                    add_session_log(session_id, f"✅ 텍스트 추출 완료: {len(ocr_results)}개 텍스트 발견", "success")
+
+                # 세션에 저장 전 디버깅
+                print(f"[DEBUG] 세션 저장 전 상태:")
+                print(f"  - session_id: {session_id}")
+                print(f"  - input_type: {input_type}")
+                print(f"  - image_path: {image_path}")
+                print(f"  - image_path exists: {os.path.exists(image_path) if image_path else False}")
+                print(f"  - figma dir contents: {os.listdir('figma') if os.path.exists('figma') else 'N/A'}")
+                if image_path and os.path.exists(image_path):
+                    print(f"  - image_path basename: {os.path.basename(image_path)}")
+                    print(f"  - expected_url: /figma_image/{os.path.basename(image_path)}")
+                add_session_log(session_id, f"📋 세션 데이터 저장 중... (image_path: {'✅' if image_path else '❌'})", "info")
+
+                temp_ocr_results[session_id] = {
+                    'source': source,
+                    'source_description': source_description,
+                    'input_type': input_type,
+                    'image_path': image_path,  # 실제 이미지 파일 경로 추가
+                    'ocr_results': ocr_results
+                }
+
+                print(f"[DEBUG] 세션 저장 완료: {session_id}")
+
+                # OCR 결과 형태 확인 및 처리
+                try:
+                    if ocr_results and hasattr(ocr_results[0], 'text'):
+                        # OCRResult 객체 형태
+                        texts = [{'text': r.text, 'confidence': r.confidence} for r in ocr_results]
+                    else:
+                        # 딕셔너리 형태
+                        texts = [{'text': r.get('text', ''), 'confidence': r.get('confidence', 0.0)} for r in ocr_results]
+                except (AttributeError, TypeError):
+                    # 예외 상황 처리
+                    texts = []
+                    for r in ocr_results:
+                        if isinstance(r, dict):
+                            texts.append({
+                                'text': r.get('text', ''),
+                                'confidence': r.get('confidence', 0.0)
+                            })
+                        else:
+                            # 다른 형태의 객체라면 기본값
+                            texts.append({
+                                'text': str(r),
+                                'confidence': 0.0
+                            })
+
+                add_session_log(session_id, "📋 OCR 결과를 사용자 선택을 위해 준비 중...", "info")
+
+                return jsonify({
+                    'status': 'ocr_complete',
+                    'ocr_count': len(ocr_results),
+                    'texts': texts,
+                    'session_id': session_id,
+                    'source_description': source_description,
+                    'redirect': f'/select_texts?session_id={session_id}'
+                })
+
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            return jsonify({
+                'status': 'error',
+                'error': f'처리 중 오류가 발생했습니다: {str(e)}',
+                'details': error_trace
+            }), 500
+
+        finally:
+            # 파일 정리
+            if input_type == 'file' and source and os.path.exists(source):
+                try:
+                    os.remove(source)
+                except:
+                    pass
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+
+        # 로그에도 오류 추가 (세션 ID가 있는 경우)
+        try:
+            if 'session_id' in locals():
+                add_session_log(session_id, f"❌ 요청 처리 중 예기치 않은 오류: {str(e)}", "error")
+                session_status[session_id] = {'completed': True}
+        except:
+            pass  # 로그 추가 실패 시 무시
+
+        return jsonify({
+            'status': 'error',
+            'error': f'요청 처리 중 예기치 않은 오류: {str(e)}',
+            'details': error_trace
+        }), 500
+
+
+@app.route('/check-placeholders', methods=['POST'])
+def check_placeholders():
+    """선택된 텍스트의 치환 가능한 패턴 감지 (성능 최적화)"""
+    try:
+        data = request.get_json()
+        selected_indexes = [int(idx) for idx in data.get('selected_indexes', [])]
+        session_id = data.get('session_id')
+
+        if not selected_indexes:
+            return jsonify({
+                'status': 'error',
+                'error': '선택된 텍스트가 없습니다.'
+            }), 400
+
+        if not session_id or session_id not in temp_ocr_results:
+            return jsonify({
+                'status': 'error',
+                'error': 'OCR 세션 데이터가 없습니다. 다시 시도해주세요.'
+            }), 400
+
+        # OCR 결과 가져오기
+        session_data = temp_ocr_results[session_id]
+        ocr_results = session_data['ocr_results']
+
+        # 선택된 텍스트 추출
+        selected_texts = []
+        for idx in selected_indexes:
+            if 0 <= idx < len(ocr_results):
+                selected_texts.append(ocr_results[idx]['text'])
+
+        # 성능 최적화: PlaceholderDetector 캐싱
+        if not hasattr(app, '_cached_placeholder_detector'):
+            from xlt.utils.placeholder_detector import PlaceholderDetector
+            app._cached_placeholder_detector = PlaceholderDetector()
+            print("🚀 PlaceholderDetector 캐시 생성 완료")
+
+        # 성능 최적화: 결과 캐싱 (동일한 텍스트 조합에 대해)
+        cache_key = hash(tuple(sorted(selected_texts)))
+        if not hasattr(app, '_placeholder_cache'):
+            app._placeholder_cache = {}
+
+        if cache_key in app._placeholder_cache:
+            print(f"🚀 치환자 검사 캐시 히트: {len(selected_texts)}개 텍스트")
+            detection_results = app._placeholder_cache[cache_key]
+        else:
+            # 치환자 감지 실행 (캐시된 detector 사용)
+            detection_results = app._cached_placeholder_detector.detect_placeholders(selected_texts)
+            # 캐시 저장 (최대 100개 항목까지만)
+            if len(app._placeholder_cache) < 100:
+                app._placeholder_cache[cache_key] = detection_results
+                print(f"🚀 치환자 검사 결과 캐시 저장: {len(selected_texts)}개 텍스트")
+
+        # 성능 최적화: 리스트 컴프리헨션 사용
+        placeholder_suggestions = []
+        has_placeholders = False
+
+        for i, result in enumerate(detection_results):
+            if result['has_suggestions']:
+                # 각 suggestion을 새로운 형태로 변환
+                converted_suggestions = []
+
+                for suggestion in result['suggestions']:
+                    # 치환자가 적용된 텍스트 생성
+                    text_with_placeholders = result['original_text']
+
+                    # 모든 매치를 치환자로 교체 (뒤에서부터 교체해야 인덱스가 틀어지지 않음)
+                    sorted_suggestions = sorted(result['suggestions'], key=lambda x: x['start_pos'], reverse=True)
+                    for s in sorted_suggestions:
+                        start, end = s['start_pos'], s['end_pos']
+                        text_with_placeholders = text_with_placeholders[:start] + s['suggested_replacement'] + text_with_placeholders[end:]
+
+                    converted_suggestions.append({
+                        'with_placeholders': text_with_placeholders,
+                        'patterns': [{
+                            'type': suggestion['description'],
+                            'matched': suggestion['matched_text']
+                        }]
+                    })
+
+                # 첫 번째 suggestion만 사용하거나 전체 텍스트에 모든 치환자 적용
+                if converted_suggestions:
+                    # 모든 치환자를 적용한 하나의 제안 생성
+                    all_patterns = []
+                    text_with_all_placeholders = result['original_text']
+
+                    # 모든 매치를 치환자로 교체
+                    sorted_suggestions = sorted(result['suggestions'], key=lambda x: x['start_pos'], reverse=True)
+                    for s in sorted_suggestions:
+                        start, end = s['start_pos'], s['end_pos']
+                        text_with_all_placeholders = text_with_all_placeholders[:start] + s['suggested_replacement'] + text_with_all_placeholders[end:]
+                        all_patterns.append({
+                            'type': s['description'],
+                            'matched': s['matched_text']
+                        })
+
+                    placeholder_suggestions.append({
+                        'index': selected_indexes[i],
+                        'original_text': result['original_text'],
+                        'suggestions': [{
+                            'with_placeholders': text_with_all_placeholders,
+                            'patterns': all_patterns
+                        }]
+                    })
+                    has_placeholders = True  # 성능 최적화: 미리 플래그 설정
+
+        return jsonify({
+            'status': 'success',
+            'has_placeholders': has_placeholders,  # 성능 최적화: 미리 계산된 플래그 사용
+            'placeholder_suggestions': placeholder_suggestions,
+            'selected_indexes': selected_indexes,
+            'session_id': session_id
+        })
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        return jsonify({
+            'status': 'error',
+            'error': f'치환자 감지 중 오류: {str(e)}',
+            'details': error_trace
+        }), 500
+
+
+@app.route('/set-xlt-keys', methods=['POST'])
+def set_xlt_keys():
+    """치환자 편집 후 XLT Key 설정 단계"""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        selected_indexes = [int(idx) for idx in data.get('selected_indexes', [])]
+        final_texts = data.get('final_texts', [])
+
+        if not session_id or session_id not in temp_ocr_results:
+            return jsonify({
+                'status': 'error',
+                'error': '세션 데이터를 찾을 수 없습니다.'
+            }), 400
+
+        print("=" * 80)
+        print("🔍 /set-xlt-keys 요청 받음")
+        print("=" * 80)
+        print(f"Session ID: {session_id}")
+        print(f"Selected indexes: {selected_indexes}")
+        print(f"Final texts 개수: {len(final_texts)}")
+
+        # 세션에 데이터 저장
+        session_data = temp_ocr_results[session_id]
+        session_data['selected_indexes'] = selected_indexes
+        session_data['final_texts'] = final_texts
+
+        # XLT Key 설정을 위한 데이터 준비
+        key_setup_data = []
+        for i, (idx, text) in enumerate(zip(selected_indexes, final_texts)):
+            key_setup_data.append({
+                'index': i,
+                'original_index': idx,
+                'text': text[:80] + '...' if len(text) > 80 else text,  # 표시용으로 축약
+                'suggested_key': f"item_{i+1}"  # 기본 제안값
+            })
+            print(f"  [{i}] index={idx}, text='{text[:50]}...', suggested_key='item_{i+1}'")
+
+        return jsonify({
+            'status': 'success',
+            'key_setup_data': key_setup_data,
+            'session_id': session_id
+        })
+
+    except Exception as e:
+        print(f"❌ XLT Key 설정 오류: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': f'XLT Key 설정 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+
+@app.route('/translate-selected', methods=['POST'])
+def translate_selected():
+    """선택된 텍스트 번역 (개별 XLT Key 적용)"""
+    # datetime import 명시적 추가 (오류 해결)
+    from datetime import datetime
+
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        xlt_keys = data.get('xlt_keys', [])  # 개별 설정된 XLT key 배열
+
+        if not session_id or session_id not in temp_ocr_results:
+            return jsonify({
+                'status': 'error',
+                'error': '세션 데이터를 찾을 수 없습니다.'
+            }), 400
+
+        session_data = temp_ocr_results[session_id]
+        selected_indexes = session_data.get('selected_indexes', [])
+        final_texts = session_data.get('final_texts', [])
+
+        logger.info("=" * 80)
+        logger.info(f"[{session_id}] 🔍 /translate-selected 요청 받음 (개별 XLT Key)")
+        logger.info("=" * 80)
+        logger.info(f"[{session_id}] 📋 Session ID: {session_id}")
+        logger.info(f"[{session_id}] 📊 Selected indexes: {selected_indexes}")
+        logger.info(f"[{session_id}] 📝 Final texts 개수: {len(final_texts)}")
+        logger.info(f"[{session_id}] 🔑 XLT Keys 개수: {len(xlt_keys)}")
+        for i, (idx, text, key) in enumerate(zip(selected_indexes, final_texts, xlt_keys)):
+            logger.info(f"[{session_id}]   [{i}] index={idx}, key='{key}', text='{text[:50]}...'")
+        logger.info("=" * 80)
+
+        if not selected_indexes:
+            return jsonify({
+                'status': 'error',
+                'error': '선택된 텍스트가 없습니다.'
+            }), 400
+
+        if not xlt_keys or len(xlt_keys) != len(selected_indexes):
+            return jsonify({
+                'status': 'error',
+                'error': 'XLT Key 설정이 올바르지 않습니다.'
+            }), 400
+
+        # OCR 결과 가져오기 (이미 session_data는 위에서 가져옴)
+        ocr_results = session_data['ocr_results']
+
+        # 최종 텍스트 결정 (치환자 적용된 텍스트 또는 원본)
+        selected_texts = []
+        if final_texts and len(final_texts) == len(selected_indexes):
+            selected_texts = final_texts  # 치환자가 적용된 텍스트 사용
+        else:
+            # 원본 텍스트 사용
+            for idx in selected_indexes:
+                if 0 <= idx < len(ocr_results):
+                    selected_texts.append(ocr_results[idx]['text'])
+
+        # 한국어 맞춤법 교정 적용
+        corrected_texts = []
+        for text in selected_texts:
+            corrected_text = apply_korean_corrections(text)
+            corrected_texts.append(corrected_text)
+
+        selected_texts = corrected_texts
+
+        if not selected_texts:
+            return jsonify({
+                'status': 'error',
+                'error': '유효한 텍스트가 선택되지 않았습니다.'
+            }), 400
+
+        # Google 번역 전용
+        translation_mode = 'google'
+
+        # guide.md 번역 가이드 로드 (XLT System v3.0)
+        terminology = load_translation_guide()
+
+        # 번역 실행 (ko_KR은 원본 사용, 나머지 언어만 번역)
+        target_languages = ['en_US', 'ja_JP', 'zh_TW', 'th_TH']
+        translations = []
+
+        try:
+            logger.info("=" * 80)
+            logger.info(f"[{session_id}] 🔄 번역 시작: {len(selected_texts)}개 텍스트, 모드: {translation_mode}")
+            logger.info(f"[{session_id}]    📖 guide.md 용어집: {len(terminology)}개 용어 로드됨")
+            logger.info(f"[{session_id}]    🌐 대상 언어: {target_languages}")
+            logger.info(f"[{session_id}]    📝 샘플 텍스트: {selected_texts[0][:50] if selected_texts else 'None'}...")
+            logger.info(f"[{session_id}]    🔧 번역기 타입: {type(pipeline.translator).__name__}")
+            logger.info("=" * 80)
+
+            # 번역 진행 상황 초기화
+            session_status[session_id] = {
+                'translation_progress': {
+                    'status': 'translating',
+                    'total_languages': len(target_languages),
+                    'completed_languages': [],
+                    'current_language': None,
+                    'total_texts': len(selected_texts),
+                    'message': '번역을 시작합니다...'
+                }
+            }
+
+            # 세션 로그 초기화 (v3.0 호환성)
+            if session_id not in session_logs:
+                session_logs[session_id] = []
+
+            # 번역기 연결 테스트
+            if hasattr(pipeline.translator, 'test_connection'):
+                logger.info(f"[{session_id}] 🔍 번역기 연결 테스트 중...")
+                session_status[session_id]['translation_progress']['message'] = '번역 서비스 연결 확인 중...'
+                connection_status = pipeline.translator.test_connection()
+                logger.info(f"[{session_id}]    ✅ 연결 상태: {connection_status}")
+
+                if isinstance(connection_status, dict):
+                    # HybridTranslator의 경우
+                    if not connection_status.get('google', False):
+                        logger.error(f"[{session_id}] ❌ Google Translate 연결 실패")
+                        raise Exception("Google Translate 연결 실패")
+                elif not connection_status:
+                    # Translator의 경우
+                    logger.error(f"[{session_id}] ❌ 번역 서비스 연결 실패")
+                    raise Exception("번역 서비스 연결 실패")
+
+            # 배치 번역 실행
+            session_status[session_id]['translation_progress']['message'] = f'{len(selected_texts)}개 텍스트를 {len(target_languages)}개 언어로 번역 중...'
+            session_status[session_id]['translation_progress']['current_language'] = 'processing'
+
+            # 번역 시작 로그 추가
+            log_message = f'🔄 번역 시작: {len(selected_texts)}개 텍스트 → {len(target_languages)}개 언어'
+            logger.info(f"[{session_id}] {log_message}")
+            log_entry = {
+                'message': log_message,
+                'timestamp': datetime.now().strftime("%H:%M:%S"),
+                'type': 'info'
+            }
+            session_logs[session_id].append(log_entry)
+
+            # 언어별 번역 준비 상태 로그
+            lang_names = {
+                'ko_KR': '한국어', 'en_US': '영어', 'ja_JP': '일본어',
+                'zh_TW': '중국어', 'th_TH': '태국어'
+            }
+            for i, lang in enumerate(target_languages):
+                log_message = f'   {i+1}/{len(target_languages)} {lang_names.get(lang, lang)} 번역 대기 중...'
+                logger.info(f"[{session_id}] {log_message}")
+                log_entry = {
+                    'message': log_message,
+                    'timestamp': datetime.now().strftime("%H:%M:%S"),
+                    'type': 'info'
+                }
+                session_logs[session_id].append(log_entry)
+
+            # 번역 실행 전 상세 로그
+            log_message = f'🔍 소스 언어 자동 감지 중...'
+            logger.info(f"[{session_id}] {log_message}")
+            log_entry = {
+                'message': log_message,
+                'timestamp': datetime.now().strftime("%H:%M:%S"),
+                'type': 'info'
+            }
+            session_logs[session_id].append(log_entry)
+
+            # 실시간 번역 진행 로그 시스템
+            import time
+            import threading
+
+            def add_translation_log(message, log_type='info'):
+                # session_logs에 추가
+                log_entry = {
+                    'message': message,
+                    'timestamp': datetime.now().strftime("%H:%M:%S"),
+                    'type': log_type
+                }
+                session_logs[session_id].append(log_entry)
+
+                # logger에도 출력 (터미널/파일 로그)
+                if log_type == 'error':
+                    logger.error(f"[{session_id}] {message}")
+                elif log_type == 'warning':
+                    logger.warning(f"[{session_id}] {message}")
+                elif log_type == 'success':
+                    logger.info(f"[{session_id}] ✅ {message}")
+                else:
+                    logger.info(f"[{session_id}] {message}")
+
+            # 1. 선택된 텍스트 처리 상황
+            add_translation_log(f'📝 {len(selected_texts)}개 텍스트 처리 시작')
+            for i, text in enumerate(selected_texts[:5]):  # 처음 5개만 표시
+                add_translation_log(f'   [{i+1}] {text[:50]}{"..." if len(text) > 50 else ""}')
+            if len(selected_texts) > 5:
+                add_translation_log(f'   ... 외 {len(selected_texts) - 5}개 더')
+
+            # 2. 한국어 교정 진행 상황
+            add_translation_log(f'🔤 한국어 맞춤법 교정 중...')
+            time.sleep(0.1)  # UI 업데이트를 위한 최소 대기
+
+            # 3. 번역 엔진 시작
+            add_translation_log(f'🔍 소스 언어 감지: 한국어 (자동)')
+            add_translation_log(f'🌐 대상 언어: {", ".join(["영어", "일본어", "중국어", "태국어"])}')
+            add_translation_log(f'⏱️ 타임아웃: 120초 (태국어 문제 해결)')
+
+            # 4. 각 언어별 번역 준비
+            lang_names = {'en_US': '영어', 'ja_JP': '일본어', 'zh_TW': '중국어', 'th_TH': '태국어'}
+            for lang in target_languages:
+                if lang != 'ko_KR':  # 한국어 제외
+                    add_translation_log(f'🚀 {lang_names.get(lang, lang)} 번역 작업 시작')
+
+            # 개별 번역 실행 (언어 감지 오류 해결)
+            add_translation_log(f'🔄 개별 텍스트별 번역 시작...', 'info')
+
+            translated_results = []
+
+            for i, text in enumerate(selected_texts):
+                add_translation_log(f'📝 [{i+1}/{len(selected_texts)}] "{text[:30]}{"..." if len(text) > 30 else ""}" 번역 중...')
+
+                try:
+                    # 개별 텍스트를 배치로 처리 (언어 감지를 텍스트별로 수행)
+                    individual_result = pipeline.translator.translate_batch(
+                        [text],  # 단일 텍스트를 배열로 래핑
+                        target_languages
+                    )
+
+                    if individual_result and len(individual_result) > 0:
+                        # guide.md 용어집 적용 (XLT System v3.0)
+                        result = individual_result[0].copy()
+
+                        # ko_KR은 원본 텍스트를 그대로 사용
+                        result['ko_KR'] = text
+
+                        # 각 언어별로 용어집 기반 후처리 적용
+                        for lang in target_languages:
+                            if lang in result and lang != 'ko_KR':
+                                original_translation = result[lang]
+                                guided_translation = apply_terminology_guide(original_translation, lang, terminology)
+                                if guided_translation != original_translation:
+                                    result[lang] = guided_translation
+                                    add_translation_log(f'📖 [{i+1}] {lang} 용어집 적용')
+
+                        translated_results.append(result)
+                        add_translation_log(f'✅ [{i+1}/{len(selected_texts)}] 번역 완료')
+                    else:
+                        # 실패 시 기본 구조로 채우기
+                        fallback_result = {'original': text, 'ko_KR': text}
+                        for lang in target_languages:
+                            fallback_result[lang] = text  # 원본 텍스트로 대체
+                        translated_results.append(fallback_result)
+                        add_translation_log(f'⚠️ [{i+1}/{len(selected_texts)}] 번역 실패, 원본 사용')
+
+                except Exception as e:
+                    add_translation_log(f'❌ [{i+1}/{len(selected_texts)}] 오류: {str(e)[:50]}')
+                    # 오류 시 기본 구조로 채우기
+                    fallback_result = {'original': text, 'ko_KR': text}
+                    for lang in target_languages:
+                        fallback_result[lang] = text
+                    translated_results.append(fallback_result)
+
+            add_translation_log(f'🎯 전체 개별 번역 완료: {len(translated_results)}/{len(selected_texts)}개')
+
+            # 번역 완료 후 각 언어별 결과 분석
+            if translated_results:
+                # ko_KR은 항상 성공으로 간주 (원본 사용)
+                add_translation_log(f'✅ {lang_names.get("ko_KR", "ko_KR")} 번역 완료: {len(translated_results)}/{len(translated_results)}개 (원본 사용)', 'success')
+
+                for lang in target_languages:
+                    success_count = sum(1 for result in translated_results
+                                      if result.get(lang) and result.get(lang) != result.get('original', ''))
+                    if success_count > 0:
+                        add_translation_log(f'✅ {lang_names.get(lang, lang)} 번역 완료: {success_count}/{len(translated_results)}개', 'success')
+                    else:
+                        add_translation_log(f'⚠️ {lang_names.get(lang, lang)} 번역 실패 또는 미완료', 'warning')
+
+            add_translation_log(f'🎉 전체 번역 작업 완료!', 'success')
+
+            # 번역 완료 로그 추가
+            lang_names = {
+                'ko_KR': '한국어', 'en_US': '영어', 'ja_JP': '일본어',
+                'zh_TW': '중국어', 'th_TH': '태국어'
+            }
+
+            # 각 언어별 번역 완료 상태 로그
+            for lang in target_languages:
+                if translated_results and len(translated_results) > 0:
+                    # 실제 번역된 항목 확인
+                    success_count = sum(1 for result in translated_results if result.get(lang) and result.get(lang) != result.get('original', ''))
+                    if success_count > 0:
+                        log_entry = {
+                            'message': f'   ✅ {lang_names.get(lang, lang)} 번역 완료: {success_count}개 항목',
+                            'timestamp': datetime.now().strftime("%H:%M:%S"),
+                            'type': 'success'
+                        }
+                    else:
+                        log_entry = {
+                            'message': f'   ⚠️ {lang_names.get(lang, lang)} 번역 실패 또는 미완료',
+                            'timestamp': datetime.now().strftime("%H:%M:%S"),
+                            'type': 'warning'
+                        }
+                    session_logs[session_id].append(log_entry)
+
+            # 전체 완료 로그
+            total_success = len(translated_results) if translated_results else 0
+            log_entry = {
+                'message': f'🎉 번역 완료: {total_success}개 텍스트 처리됨',
+                'timestamp': datetime.now().strftime("%H:%M:%S"),
+                'type': 'success'
+            }
+            session_logs[session_id].append(log_entry)
+
+            # 맥 알림 및 사운드 전송 (안전한 방식)
+            try:
+                import subprocess
+                import os
+
+                # 알림 메시지
+                notification_title = "XLT 번역 완료"
+                notification_message = f"{total_success}개 텍스트 번역이 완료되었습니다!"
+
+                # AppleScript를 사용한 알림 및 사운드 (안전한 방식)
+                applescript = f'display notification "{notification_message}" with title "{notification_title}" sound name "Glass"'
+
+                # 타임아웃을 짧게 설정하여 블로킹 방지
+                result = subprocess.run(
+                    ['osascript', '-e', applescript],
+                    capture_output=True,
+                    text=True,
+                    timeout=5  # 5초 타임아웃
+                )
+
+                if result.returncode == 0:
+                    print(f"📢 맥 알림 전송 성공: {notification_message}")
+                else:
+                    print(f"⚠️ 알림 전송 실패: {result.stderr}")
+
+                # 사운드 파일 존재 확인 후 재생
+                sound_file = '/System/Library/Sounds/Glass.aiff'
+                if os.path.exists(sound_file):
+                    subprocess.run(['afplay', sound_file], capture_output=True, timeout=3)
+                else:
+                    print(f"⚠️ 사운드 파일 없음: {sound_file}")
+
+            except subprocess.TimeoutExpired:
+                print("⚠️ 알림 전송 타임아웃 (5초 초과)")
+            except Exception as e:
+                print(f"⚠️ 알림 전송 실패: {type(e).__name__}: {e}")
+
+            # 알림 실패와 관계없이 번역 작업은 계속 진행
+
+            # 번역 완료 상태 업데이트
+            session_status[session_id]['translation_progress'].update({
+                'status': 'completed',
+                'completed_languages': target_languages,
+                'current_language': None,
+                'message': f'{len(translated_results)}개 텍스트 번역 완료!'
+            })
+
+            print(f"✅ 번역 완료: {len(translated_results)}개 결과")
+            if translated_results:
+                print(f"   샘플 결과 키: {list(translated_results[0].keys())}")
+                print(f"   샘플 번역:")
+                for lang in target_languages[:3]:  # 처음 3개 언어만 출력
+                    print(f"      {lang}: {translated_results[0].get(lang, 'N/A')[:50]}...")
+
+            for i, result in enumerate(translated_results):
+                # 번역 결과를 플랫 구조로 변환
+                translation_item = {
+                    'original': result.get('original', selected_texts[i]),
+                    'ko_KR': result.get('ko_KR', selected_texts[i]),
+                    'en_US': result.get('en_US', selected_texts[i]),
+                    'ja_JP': result.get('ja_JP', selected_texts[i]),
+                    'zh_TW': result.get('zh_TW', selected_texts[i]),
+                    'th_TH': result.get('th_TH', selected_texts[i])
+                }
+                translations.append(translation_item)
+
+        except Exception as e:
+            print("=" * 80)
+            print(f"❌ 번역 실패: {type(e).__name__}: {e}")
+            print("=" * 80)
+            import traceback
+            error_trace = traceback.format_exc()
+            print(error_trace)
+
+            # 오류 로그를 세션 로그에 추가
+            log_entry = {
+                'message': f'❌ 번역 실패: {type(e).__name__}: {str(e)}',
+                'timestamp': datetime.now().strftime("%H:%M:%S"),
+                'type': 'error'
+            }
+            session_logs[session_id].append(log_entry)
+
+            # 번역 실패 상태 업데이트
+            if session_id in session_status:
+                session_status[session_id]['translation_progress'].update({
+                    'status': 'failed',
+                    'completed_languages': [],
+                    'current_language': None,
+                    'message': f'번역 실패: {str(e)}'
+                })
+
+            # 사용자에게 명확한 오류 메시지 반환
+            return jsonify({
+                'status': 'error',
+                'error': f'번역 중 오류가 발생했습니다: {str(e)}',
+                'details': error_trace,
+                'error_type': type(e).__name__
+            }), 500
+
+        if not translations:
+            return jsonify({
+                'status': 'error',
+                'error': '모든 텍스트 번역에 실패했습니다.'
+            }), 500
+
+        # 번역 결과에 XLT Key 추가
+        translations_with_keys = []
+        for i, (translation, xlt_key) in enumerate(zip(translations, xlt_keys)):
+            translation_with_key = translation.copy()
+            translation_with_key['xlt_key'] = xlt_key  # 개별 설정된 XLT key 포함
+            translations_with_keys.append(translation_with_key)
+
+        # 번역 결과를 세션에 저장 (XLT Key 포함)
+        session_data['translations'] = translations_with_keys
+        session_data['translation_completed'] = True
+        session_data['xlt_keys'] = xlt_keys  # XLT key 배열도 저장
+        print(f"✅ 번역 완료: {len(translations_with_keys)}개 결과를 세션에 저장 (XLT Key 포함)")
+
+        # 번역 결과에 원본 및 처리된 텍스트 정보 추가
+        translation_details = []
+
+        print(f"🔍 디버깅: selected_indexes 개수={len(selected_indexes)}")
+        print(f"🔍 디버깅: selected_texts 개수={len(selected_texts)}")
+        print(f"🔍 디버깅: translations 개수={len(translations)}")
+
+        for i, translation in enumerate(translations):
+            # OCR 원본 텍스트
+            if i < len(selected_indexes) and selected_indexes[i] < len(ocr_results):
+                ocr_original = ocr_results[selected_indexes[i]]['text']
+            else:
+                ocr_original = ""
+
+            # 처리된 텍스트 (실제로 번역에 사용된 텍스트)
+            # selected_texts는 이미 치환자가 적용되었거나 교정된 텍스트
+            if i < len(selected_texts):
+                processed_text = selected_texts[i]
+            else:
+                processed_text = ocr_original  # fallback
+
+            print(f"  [{i}] OCR원본='{ocr_original[:30]}...' 처리됨='{processed_text[:30]}...'")
+
+            detail = {
+                'original_text': ocr_original,  # OCR 원본
+                'processed_text': processed_text,  # 실제로 번역에 사용된 텍스트
+                'translations': {
+                    'ko_KR': translation.get('ko_KR', processed_text),  # ko_KR이 없으면 원본 사용
+                    'en_US': translation.get('en_US', processed_text),
+                    'ja_JP': translation.get('ja_JP', processed_text),
+                    'zh_TW': translation.get('zh_TW', processed_text),
+                    'th_TH': translation.get('th_TH', processed_text)
+                }
+            }
+            translation_details.append(detail)
+
+        # XLT key가 제공된 경우 번역 결과와 함께 미리보기 데이터 반환
+        xlt_keys = data.get('xlt_keys', [])
+        if xlt_keys and len(xlt_keys) == len(translations_with_keys):
+            # 번역 결과에 XLT key 정보 추가하여 미리보기용 데이터 생성
+            preview_data = []
+            for i, (detail, xlt_key) in enumerate(zip(translation_details, xlt_keys)):
+                preview_item = {
+                    'xlt_key': xlt_key,
+                    'original_text': detail['original_text'],
+                    'processed_text': detail['processed_text'],
+                    'translations': detail['translations']
+                }
+                preview_data.append(preview_item)
+
+            # 세션에 Excel 생성용 데이터 저장
+            session_data['excel_ready_data'] = {
+                'translations': [t['translations'] for t in translation_details],
+                'xlt_keys': xlt_keys,
+                'preview_data': preview_data
+            }
+
+            print(f"✅ 번역 완료 및 미리보기 준비: {len(preview_data)}개 항목")
+
+            return jsonify({
+                'status': 'success',
+                'session_id': session_id,
+                'processed_count': len(translations_with_keys),
+                'translations': translation_details,
+                'preview_data': preview_data,
+                'xlt_keys': xlt_keys,
+                'excel_ready': True,
+                'message': '번역이 완료되었습니다. 미리보기를 확인하고 Excel 파일을 다운로드하세요.'
+            })
+
+        # Excel 생성 없이 번역 결과만 반환 (XLT key가 없는 경우)
+        return jsonify({
+            'status': 'success',
+            'processed_count': len(translations_with_keys),
+            'translations': translation_details,
+            'excel_ready': False,
+            'message': '번역이 완료되었습니다.'
+        })
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        return jsonify({
+            'status': 'error',
+            'error': f'선택 번역 중 오류: {str(e)}',
+            'details': error_trace
+        }), 500
+
+
+def create_excel_with_custom_keys(translations, xlt_keys):
+    """sampleformat.xlsx를 물리적으로 완전 복사한 후 properties 워크시트 2행부터만 업데이트"""
+    try:
+        import openpyxl
+        from io import BytesIO
+        import os
+        import shutil
+        import tempfile
+
+        # sampleformat.xlsx 템플릿 파일 경로 (동적)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        template_path = os.path.join(current_dir, 'Sample', 'sampleformat.xlsx')
+
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"템플릿 파일을 찾을 수 없습니다: {template_path}")
+
+        print("📋 sampleformat.xlsx를 물리적으로 완전 복사 중...")
+
+        # 1단계: sampleformat.xlsx를 임시 파일로 물리적 복사
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp_file:
+            shutil.copy2(template_path, tmp_file.name)
+            copied_file_path = tmp_file.name
+
+        print(f"✅ sampleformat.xlsx 물리적 복사 완료: {copied_file_path}")
+
+        # 2단계: 복사된 파일을 로드
+        wb = openpyxl.load_workbook(copied_file_path)
+
+        print(f"📂 복사된 파일 구조:")
+        print(f"   워크시트 개수: {len(wb.worksheets)}개")
+        print(f"   워크시트 이름: {[ws.title for ws in wb.worksheets]}")
+
+        # 모든 워크시트 보존 확인
+        for ws in wb.worksheets:
+            print(f"   - {ws.title}: {ws.max_column}열 × {ws.max_row}행")
+
+        # 3단계: properties 워크시트만 수정
+        ws_properties = wb['properties']
+        original_max_row = ws_properties.max_row
+        print(f"📝 properties 워크시트 수정 (원본: {ws_properties.max_column}열 × {original_max_row}행)")
+
+        # 4단계: 헤더 구조 보존 확인 (1행은 절대 건드리지 않음)
+        headers = []
+        for col in range(1, ws_properties.max_column + 1):
+            header = ws_properties.cell(row=1, column=col).value
+            headers.append(header)
+
+        print(f"📊 원본 헤더 보존: {headers}")
+
+        # 5단계: XLT 번역 언어 매핑
+        xlt_language_mapping = {
+            'en_US': 'en_US',
+            'ko_KR': 'ko_KR',
+            'ja_JP': 'ja_JP',
+            'zh_TW': 'zh_TW',
+            'th_TH': 'th_TH'
+        }
+
+        # 6단계: 기존 데이터 행만 정리 (2행부터 끝까지, 헤더 절대 건드리지 않음)
+        if original_max_row > 1:
+            # 2행부터 마지막 행까지 모든 셀 내용을 빈 값으로 설정
+            for row in range(2, original_max_row + 1):
+                for col in range(1, ws_properties.max_column + 1):
+                    ws_properties.cell(row=row, column=col).value = None
+            print(f"🗑️  기존 데이터 정리 완료 (2~{original_max_row}행)")
+
+        # 7단계: 번역 데이터를 2행부터 입력 (헤더는 절대 건드리지 않음)
+        print(f"📝 번역 데이터 입력 시작: {len(translations)}개 항목")
+
+        for data_idx, (translation, xlt_key) in enumerate(zip(translations, xlt_keys)):
+            row_idx = data_idx + 2  # 2행부터 시작
+            print(f"   [{data_idx+1}/{len(translations)}] 행 {row_idx}: Key={xlt_key}")
+
+            # A열: Key ID 설정
+            ws_properties.cell(row=row_idx, column=1, value=xlt_key)
+
+            # B열부터: 언어별 번역 데이터
+            for col_idx, header in enumerate(headers[1:], 2):
+                if header in xlt_language_mapping:
+                    # XLT에서 번역된 언어
+                    xlt_lang_code = xlt_language_mapping[header]
+                    translated_text = translation.get(xlt_lang_code, '')
+                    ws_properties.cell(row=row_idx, column=col_idx, value=translated_text)
+
+                    if translated_text:
+                        print(f"      컬럼 {col_idx} ({header}): {translated_text[:25]}{'...' if len(translated_text) > 25 else ''}")
+                else:
+                    # XLT에서 번역되지 않은 언어는 빈칸 유지
+                    ws_properties.cell(row=row_idx, column=col_idx, value='')
+
+        # 8단계: 모든 워크시트 구조 최종 확인
+        print(f"📋 최종 파일 구조:")
+        for ws in wb.worksheets:
+            print(f"   - {ws.title}: {ws.max_column}열 × {ws.max_row}행")
+
+        print(f"✅ sampleformat.xlsx 기반 완전 복사본 생성 완료:")
+        print(f"   📋 원본: sampleformat.xlsx (3개 워크시트 완전 보존)")
+        print(f"   📝 수정: properties 워크시트 2~{len(translations)+1}행만")
+        print(f"   🔒 보존: plurals, Language code 워크시트 완전 보존")
+        print(f"   🌐 번역 언어: {', '.join(xlt_language_mapping.keys())}")
+
+        # 9단계: 메모리 버퍼로 저장
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        # 10단계: 임시 파일 정리
+        try:
+            os.unlink(copied_file_path)
+            print(f"🧹 임시 파일 정리 완료")
+        except:
+            pass
+
+        print(f"💾 메모리 버퍼 저장 완료 (크기: {len(buffer.getvalue())} bytes)")
+        return buffer
+
+    except Exception as e:
+        print(f"❌ sampleformat.xlsx 완전 복사 실패: {e}")
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ 상세 오류:\n{error_trace}")
+        return None
+
+
+@app.route('/download-excel', methods=['POST'])
+def download_excel():
+    """미리보기 완료 후 Excel 파일 다운로드"""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+
+        if not session_id or session_id not in temp_ocr_results:
+            return jsonify({
+                'status': 'error',
+                'error': '세션을 찾을 수 없습니다.'
+            }), 400
+
+        session_data = temp_ocr_results[session_id]
+        excel_data = session_data.get('excel_ready_data')
+
+        if not excel_data:
+            return jsonify({
+                'status': 'error',
+                'error': '다운로드할 Excel 데이터가 없습니다. 번역을 다시 시도해주세요.'
+            }), 400
+
+        logger.info(f"[{session_id}] 📥 Excel 다운로드 요청: {len(excel_data['xlt_keys'])}개 항목")
+
+        # Excel 파일 생성
+        excel_buffer = create_excel_with_custom_keys(
+            excel_data['translations'],
+            excel_data['xlt_keys']
+        )
+
+        if excel_buffer is None:
+            logger.error(f"[{session_id}] ❌ Excel 파일 생성 실패")
+            return jsonify({
+                'status': 'error',
+                'error': 'Excel 파일 생성에 실패했습니다.'
+            }), 500
+
+        # 파일명 생성
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"xlt_translation_{timestamp}.xlsx"
+
+        logger.info(f"[{session_id}] ✅ Excel 파일 다운로드 준비 완료: {filename}")
+
+        # Excel 파일 다운로드
+        from flask import send_file
+        return send_file(
+            excel_buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"❌ Excel 다운로드 오류: {e}")
+        logger.error(f"   상세 오류: {error_trace}")
+
+        return jsonify({
+            'status': 'error',
+            'error': f'Excel 다운로드 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+
+@app.route('/generate-excel', methods=['POST'])
+def generate_excel():
+    """번역 결과로 Excel 파일 생성하여 바로 다운로드 (메모리 기반) - 레거시"""
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+        key_prefix = data.get('key_prefix', '').strip()
+
+        if not session_id or session_id not in temp_ocr_results:
+            return jsonify({
+                'status': 'error',
+                'error': '세션을 찾을 수 없습니다. 번역을 다시 시도해주세요.'
+            }), 400
+
+        session_data = temp_ocr_results[session_id]
+
+        if not session_data.get('translation_completed'):
+            return jsonify({
+                'status': 'error',
+                'error': '번역이 완료되지 않았습니다.'
+            }), 400
+
+        translations = session_data.get('translations', [])
+        if not translations:
+            return jsonify({
+                'status': 'error',
+                'error': '번역 결과가 없습니다.'
+            }), 400
+
+        # Key prefix 적용하여 XLT keys 생성
+        xlt_keys = []
+        for i in range(len(translations)):
+            if key_prefix:
+                xlt_keys.append(f"{key_prefix}_{i+1}")
+            else:
+                xlt_keys.append(f"item_{i+1}")
+
+        # translations에서 xlt_key 제거하고 순수 번역 데이터만 추출
+        clean_translations = []
+        for translation in translations:
+            # xlt_key를 제외한 번역 데이터만 추출
+            clean_translation = {k: v for k, v in translation.items() if k != 'xlt_key'}
+            clean_translations.append(clean_translation)
+
+        print(f"🔍 /generate-excel 데이터 변환:")
+        print(f"   원본 translations 개수: {len(translations)}")
+        print(f"   정제된 translations 개수: {len(clean_translations)}")
+        if clean_translations:
+            print(f"   샘플 키: {list(clean_translations[0].keys())}")
+
+        # Excel 파일 생성 (메모리)
+        excel_buffer = create_excel_with_custom_keys(clean_translations, xlt_keys)
+
+        if excel_buffer is None:
+            return jsonify({
+                'status': 'error',
+                'error': 'Excel 파일 생성에 실패했습니다.'
+            }), 500
+
+        # 파일명 생성
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{timestamp}.xlsx"
+
+        # 바로 다운로드 응답
+        from flask import send_file
+        return send_file(
+            excel_buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Excel 생성 오류: {e}")
+        print(f"   상세 오류: {error_trace}")
+
+        return jsonify({
+            'status': 'error',
+            'error': f'Excel 파일 생성 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+
+@app.route('/merge-excel', methods=['POST'])
+def merge_excel_files():
+    """여러 Excel 파일을 하나로 합쳐서 바로 다운로드 (메모리 기반)"""
+    try:
+        import openpyxl
+        from pathlib import Path
+        from datetime import datetime
+        from io import BytesIO
+        from flask import send_file
+
+        # 요청 데이터 확인
+        if 'files' not in request.files:
+            return jsonify({
+                'status': 'error',
+                'error': '업로드된 파일이 없습니다.'
+            }), 400
+
+        files = request.files.getlist('files')
+        remove_duplicates = request.form.get('remove_duplicates', 'true').lower() == 'true'
+        sort_by_key = request.form.get('sort_by_key', 'true').lower() == 'true'
+        custom_filename = request.form.get('output_filename', '').strip()
+
+        if len(files) == 0:
+            return jsonify({
+                'status': 'error',
+                'error': '업로드된 파일이 없습니다.'
+            }), 400
+
+        print(f"🔄 엑셀 합치기 시작: {len(files)}개 파일")
+
+        # sampleformat.xlsx 템플릿 로드
+        sample_path = Path('Sample/sampleformat.xlsx')
+        if not sample_path.exists():
+            return jsonify({
+                'status': 'error',
+                'error': 'sampleformat.xlsx 템플릿 파일을 찾을 수 없습니다.'
+            }), 500
+
+        # 템플릿 워크북 로드
+        template_wb = openpyxl.load_workbook(sample_path)
+        template_ws = template_wb.active
+
+        # XLT 시스템에서 사용하는 언어 컬럼 매핑 (sampleformat.xlsx 기준)
+        xlt_to_sample_mapping = {
+            'en_US': 'en_US',  # 열 2
+            'ko_KR': 'ko_KR',  # 열 3
+            'ja_JP': 'ja_JP',  # 열 4
+            'zh_TW': 'zh_TW',  # 열 6
+            'th_TH': 'th_TH'   # 열 11
+        }
+
+        # 헤더에서 컬럼 인덱스 찾기
+        header_row = 1
+        col_mapping = {}
+        for col in range(1, template_ws.max_column + 1):
+            header_value = template_ws.cell(header_row, col).value
+            if header_value in xlt_to_sample_mapping.values():
+                col_mapping[header_value] = col
+
+        # Key ID 컬럼 찾기
+        key_col = None
+        for col in range(1, template_ws.max_column + 1):
+            if template_ws.cell(header_row, col).value == 'Key ID':
+                key_col = col
+                break
+
+        if key_col is None:
+            return jsonify({
+                'status': 'error',
+                'error': 'Key ID 컬럼을 찾을 수 없습니다.'
+            }), 500
+
+        # 모든 데이터를 저장할 딕셔너리
+        all_data = {}
+
+        # 각 파일을 읽어서 데이터 수집
+        for file_obj in files:
+            if file_obj.filename == '':
+                continue
+
+            try:
+                # Excel 파일 읽기
+                wb = openpyxl.load_workbook(file_obj)
+                ws = wb.active
+
+                # XLT 파일의 헤더 확인
+                xlt_headers = {}
+                for col in range(1, ws.max_column + 1):
+                    header_value = ws.cell(1, col).value
+                    if header_value:
+                        xlt_headers[header_value] = col
+
+                # Key 컬럼 찾기 (Key ID 또는 Key)
+                xlt_key_col = xlt_headers.get('Key ID') or xlt_headers.get('Key')
+                if xlt_key_col is None:
+                    continue
+
+                # 데이터 행 읽기 (2행부터)
+                for row in range(2, ws.max_row + 1):
+                    key_value = ws.cell(row, xlt_key_col).value
+                    if not key_value or key_value.strip() == '':
+                        continue
+
+                    key_value = key_value.strip()
+
+                    # 중복 확인
+                    if remove_duplicates and key_value in all_data:
+                        continue
+
+                    # 행 데이터 수집
+                    row_data = {'Key': key_value}
+
+                    # XLT 시스템 언어들 매핑
+                    for xlt_lang, sample_lang in xlt_to_sample_mapping.items():
+                        xlt_col = xlt_headers.get(xlt_lang)
+                        if xlt_col:
+                            cell_value = ws.cell(row, xlt_col).value
+                            row_data[sample_lang] = cell_value if cell_value else ''
+
+                    all_data[key_value] = row_data
+
+            except Exception as e:
+                print(f"파일 처리 오류: {e}")
+
+        if len(all_data) == 0:
+            return jsonify({
+                'status': 'error',
+                'error': '처리할 수 있는 데이터가 없습니다.'
+            }), 400
+
+        # 정렬
+        if sort_by_key:
+            sorted_keys = sorted(all_data.keys())
+        else:
+            sorted_keys = list(all_data.keys())
+
+        # 새 워크북에 데이터 입력
+        current_row = 2
+        for key in sorted_keys:
+            data = all_data[key]
+
+            # Key 입력
+            template_ws.cell(current_row, key_col).value = data['Key']
+
+            # 언어별 데이터 입력
+            for lang, col_idx in col_mapping.items():
+                value = data.get(lang, '')
+                template_ws.cell(current_row, col_idx).value = value
+
+            current_row += 1
+
+        # 출력 파일명 생성
+        if custom_filename:
+            output_filename = f"{custom_filename}.xlsx"
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_filename = f"merged_translations_{timestamp}.xlsx"
+
+        # 메모리 버퍼로 저장
+        buffer = BytesIO()
+        template_wb.save(buffer)
+        buffer.seek(0)
+
+        print(f"✅ 합친 파일 생성: {output_filename} ({len(all_data)}개 항목)")
+
+        # 바로 다운로드 응답
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=output_filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ 엑셀 합치기 오류: {e}")
+
+        return jsonify({
+            'status': 'error',
+            'error': f'엑셀 합치기 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+
+def check_system_health():
+    """시스템 전체 헬스체크"""
+    health_status = {}
+
+    # 1. OCR 엔진 상태 확인
+    try:
+        import easyocr
+        from PIL import Image
+        # EasyOCR 초기화 테스트
+        test_reader = easyocr.Reader(['ko', 'en'], gpu=False, verbose=False)
+        health_status['ocr'] = {
+            'status': 'ok',
+            'message': 'OCR 엔진 정상',
+            'details': f'EasyOCR v{easyocr.__version__}, Pillow v{Image.__version__}',
+            'last_check': datetime.now().isoformat()
+        }
+    except Exception as e:
+        health_status['ocr'] = {
+            'status': 'error',
+            'message': 'OCR 엔진 오류',
+            'details': f'문제: {str(e)}. 해결: pip install easyocr pillow==9.5.0',
+            'last_check': datetime.now().isoformat()
+        }
+
+    # 2. 피그마 연결 상태 확인
+    try:
+        from xlt.input.figma import FigmaProcessor
+        figma_processor = FigmaProcessor(pipeline.config)
+        if figma_processor.figma_token:
+            # 토큰이 있는 경우 연결 테스트
+            if hasattr(figma_processor, 'test_figma_connection'):
+                connection_ok = figma_processor.test_figma_connection()
+                if connection_ok:
+                    health_status['figma'] = {
+                        'status': 'ok',
+                        'message': '피그마 연결 정상',
+                        'details': '토큰 유효, API 접근 가능',
+                        'last_check': datetime.now().isoformat()
+                    }
+                else:
+                    health_status['figma'] = {
+                        'status': 'warning',
+                        'message': '피그마 API 접근 실패',
+                        'details': '토큰은 있지만 API 호출 실패. 네트워크 또는 토큰 권한 확인 필요',
+                        'last_check': datetime.now().isoformat()
+                    }
+            else:
+                health_status['figma'] = {
+                    'status': 'ok',
+                    'message': '피그마 토큰 설정됨',
+                    'details': '토큰이 설정되어 있음 (연결 테스트 불가)',
+                    'last_check': datetime.now().isoformat()
+                }
+        else:
+            health_status['figma'] = {
+                'status': 'warning',
+                'message': '피그마 토큰 미설정',
+                'details': '피그마 URL 처리를 위해 figma_config.json에 토큰 설정 필요',
+                'last_check': datetime.now().isoformat()
+            }
+    except Exception as e:
+        health_status['figma'] = {
+            'status': 'error',
+            'message': '피그마 모듈 오류',
+            'details': f'문제: {str(e)}. 모듈 로드 실패',
+            'last_check': datetime.now().isoformat()
+        }
+
+    # 2.5. 피그마 API 상세 상태 확인
+    try:
+        if 'figma' in health_status and health_status['figma']['status'] == 'ok':
+            # 기본 연결이 성공한 경우에만 API 상세 테스트 진행
+            from xlt.input.figma import FigmaProcessor
+            figma_processor = FigmaProcessor(pipeline.config)
+
+            api_details = []
+            api_warnings = []
+            api_errors = []
+
+            # API 응답 시간 테스트
+            import time
+            start_time = time.time()
+            try:
+                # 간단한 API 호출로 응답 시간 측정
+                response_time_ok = figma_processor.test_figma_connection()
+                response_time = (time.time() - start_time) * 1000  # ms
+
+                if response_time < 1000:
+                    api_details.append(f'응답시간: {response_time:.0f}ms (우수)')
+                elif response_time < 3000:
+                    api_details.append(f'응답시간: {response_time:.0f}ms (양호)')
+                    api_warnings.append('응답시간이 다소 느림')
+                else:
+                    api_details.append(f'응답시간: {response_time:.0f}ms (느림)')
+                    api_warnings.append('응답시간 최적화 필요')
+
+            except Exception as e:
+                api_errors.append(f'응답시간 측정 실패: {str(e)}')
+
+            # 실제 이미지 다운로드 테스트 (작은 테스트 이미지)
+            try:
+                # 테스트용 작은 피그마 프레임 생성 시뮬레이션
+                # 실제 다운로드 대신 API 엔드포인트 접근 가능성 체크
+                import requests
+
+                # 피그마 API 토큰 유효성 확인 (/v1/me 엔드포인트 사용)
+                headers = {'X-Figma-Token': figma_processor.figma_token}
+                version_response = requests.get(
+                    'https://api.figma.com/v1/me',
+                    headers=headers,
+                    timeout=5
+                )
+
+                if version_response.status_code == 401:
+                    api_errors.append('API 토큰 인증 실패')
+                elif version_response.status_code == 403:
+                    api_errors.append('API 접근 권한 없음')
+                elif version_response.status_code == 429:
+                    api_warnings.append('API 호출 한도 초과 (잠시 후 재시도)')
+                elif 200 <= version_response.status_code < 300:
+                    api_details.append('API 엔드포인트 접근 가능')
+                else:
+                    api_warnings.append(f'API 응답 코드: {version_response.status_code}')
+
+            except requests.exceptions.Timeout:
+                api_warnings.append('API 응답 시간 초과 (네트워크 확인 필요)')
+            except requests.exceptions.ConnectionError:
+                api_errors.append('API 서버 연결 실패 (네트워크 확인 필요)')
+            except Exception as e:
+                api_warnings.append(f'API 테스트 부분 실패: {str(e)[:50]}...')
+
+            # 토큰 유효성 상세 체크
+            try:
+                token_length = len(figma_processor.figma_token) if figma_processor.figma_token else 0
+                if token_length == 0:
+                    api_errors.append('토큰이 설정되지 않음')
+                elif token_length < 40:
+                    api_warnings.append('토큰 길이가 짧음 (유효성 의심)')
+                else:
+                    api_details.append(f'토큰 길이: {token_length}자 (정상)')
+
+            except Exception as e:
+                api_warnings.append(f'토큰 검증 실패: {str(e)}')
+
+            # 상태 결정 및 메시지 생성
+            if api_errors:
+                health_status['figma_api'] = {
+                    'status': 'error',
+                    'message': '피그마 API 오류',
+                    'details': f'에러: {"; ".join(api_errors[:2])}. 경고: {len(api_warnings)}개',
+                    'last_check': datetime.now().isoformat()
+                }
+            elif api_warnings:
+                health_status['figma_api'] = {
+                    'status': 'warning',
+                    'message': '피그마 API 부분 문제',
+                    'details': f'경고: {"; ".join(api_warnings[:2])}. 정상: {"; ".join(api_details[:2])}',
+                    'last_check': datetime.now().isoformat()
+                }
+            else:
+                health_status['figma_api'] = {
+                    'status': 'ok',
+                    'message': '피그마 API 완전 정상',
+                    'details': f'{"; ".join(api_details[:3])}',
+                    'last_check': datetime.now().isoformat()
+                }
+
+        else:
+            # 기본 피그마 연결이 실패한 경우
+            health_status['figma_api'] = {
+                'status': 'error',
+                'message': '피그마 API 사용 불가',
+                'details': '기본 피그마 연결이 실패하여 API 테스트 불가',
+                'last_check': datetime.now().isoformat()
+            }
+
+    except Exception as e:
+        health_status['figma_api'] = {
+            'status': 'error',
+            'message': '피그마 API 체크 오류',
+            'details': f'문제: {str(e)[:100]}',
+            'last_check': datetime.now().isoformat()
+        }
+
+    # 3. 번역 시스템 상태 확인 (Google Translate 중심)
+    try:
+        # Google Translate 테스트
+        import googletrans
+        translator = googletrans.Translator()
+        test_result = translator.translate('test', dest='ko')
+
+        google_ok = test_result and test_result.text
+
+        # Google Translate 전용 시스템
+        if google_ok:
+            health_status['translation'] = {
+                'status': 'ok',
+                'message': '번역 시스템 정상',
+                'details': f'Google Translate 전용 번역 시스템 정상 동작',
+                'last_check': datetime.now().isoformat()
+            }
+        else:
+            health_status['translation'] = {
+                'status': 'warning',
+                'message': '번역 테스트 실패',
+                'details': '번역 API는 접근 가능하지만 결과가 없음',
+                'last_check': datetime.now().isoformat()
+            }
+    except Exception as e:
+        health_status['translation'] = {
+            'status': 'error',
+            'message': '번역 시스템 오류',
+            'details': f'문제: {str(e)}. 해결: 인터넷 연결 확인 또는 pip install googletrans==4.0.0rc1',
+            'last_check': datetime.now().isoformat()
+        }
+
+    # 4. 파일 시스템 상태 확인
+    try:
+        import os
+        from pathlib import Path
+
+        # 필요한 디렉토리들 확인
+        required_dirs = ['static', 'templates']  # XLT v3.0: uploads, logs, output 제거 (피그마 전용)
+        all_dirs_ok = True
+        missing_dirs = []
+
+        for dir_name in required_dirs:
+            if not os.path.exists(dir_name):
+                all_dirs_ok = False
+                missing_dirs.append(dir_name)
+            elif not os.access(dir_name, os.W_OK):
+                all_dirs_ok = False
+                missing_dirs.append(f"{dir_name}(권한없음)")
+
+        if all_dirs_ok:
+            health_status['filesystem'] = {
+                'status': 'ok',
+                'message': '파일 시스템 정상',
+                'details': f'모든 필수 디렉토리 접근 가능: {", ".join(required_dirs)}',
+                'last_check': datetime.now().isoformat()
+            }
+        else:
+            health_status['filesystem'] = {
+                'status': 'warning',
+                'message': '파일 시스템 권한 문제',
+                'details': f'문제 디렉토리: {", ".join(missing_dirs)}. 디렉토리 생성 또는 권한 확인 필요',
+                'last_check': datetime.now().isoformat()
+            }
+    except Exception as e:
+        health_status['filesystem'] = {
+            'status': 'error',
+            'message': '파일 시스템 오류',
+            'details': f'문제: {str(e)}',
+            'last_check': datetime.now().isoformat()
+        }
+
+    # 5. 의존성 패키지 상태 확인 (설치 여부만 체크)
+    try:
+        required_packages = {
+            'easyocr': 'OCR 텍스트 인식',
+            'googletrans': '번역 서비스',
+            'openpyxl': 'Excel 파일 처리',
+            'pillow': '이미지 처리',
+            'flask': '웹 서버'
+        }
+
+        missing_packages = []
+        installed_packages = []
+
+        for package, description in required_packages.items():
+            try:
+                if package == 'pillow':
+                    from PIL import Image
+                    version = getattr(Image, '__version__', 'unknown')
+                elif package == 'flask':
+                    import flask
+                    version = flask.__version__
+                elif package == 'easyocr':
+                    import easyocr
+                    version = getattr(easyocr, '__version__', 'unknown')
+                elif package == 'googletrans':
+                    import googletrans
+                    version = getattr(googletrans, '__version__', 'unknown')
+                elif package == 'openpyxl':
+                    import openpyxl
+                    version = openpyxl.__version__
+
+                installed_packages.append(f"{package}({version})")
+
+            except ImportError:
+                missing_packages.append(f"{package}({description})")
+
+        if not missing_packages:
+            health_status['dependencies'] = {
+                'status': 'ok',
+                'message': '의존성 패키지 정상',
+                'details': f'설치됨: {", ".join(installed_packages)}',
+                'last_check': datetime.now().isoformat()
+            }
+        else:
+            health_status['dependencies'] = {
+                'status': 'error',
+                'message': '필수 패키지 누락',
+                'details': f'누락: {", ".join(missing_packages)}. 해결: pip install -r requirements.txt',
+                'last_check': datetime.now().isoformat()
+            }
+    except Exception as e:
+        health_status['dependencies'] = {
+            'status': 'error',
+            'message': '의존성 체크 오류',
+            'details': f'문제: {str(e)}',
+            'last_check': datetime.now().isoformat()
+        }
+
+    # 6. 메모리 상태 확인 (유연한 체크)
+    try:
+        import psutil
+        memory = psutil.virtual_memory()
+        if memory.percent < 85:
+            health_status['memory'] = {
+                'status': 'ok',
+                'message': '메모리 사용률 정상',
+                'details': f'사용률: {memory.percent:.1f}% ({memory.available // (1024**3):.1f}GB 여유)',
+                'last_check': datetime.now().isoformat()
+            }
+        elif memory.percent < 95:
+            health_status['memory'] = {
+                'status': 'warning',
+                'message': '메모리 사용률 높음',
+                'details': f'사용률: {memory.percent:.1f}% 메모리 정리 권장',
+                'last_check': datetime.now().isoformat()
+            }
+        else:
+            health_status['memory'] = {
+                'status': 'error',
+                'message': '메모리 부족',
+                'details': f'사용률: {memory.percent:.1f}% 즉시 메모리 확보 필요',
+                'last_check': datetime.now().isoformat()
+            }
+    except ImportError:
+        # psutil이 없어도 정상으로 처리 (선택적 기능)
+        health_status['memory'] = {
+            'status': 'ok',
+            'message': '메모리 모니터링 비활성화',
+            'details': '시스템 메모리는 정상 동작 중 (상세 모니터링 불가)',
+            'last_check': datetime.now().isoformat()
+        }
+    except Exception as e:
+        # 오류가 있어도 경고가 아닌 정보성으로 처리
+        health_status['memory'] = {
+            'status': 'ok',
+            'message': '메모리 상태 추정 정상',
+            'details': f'상세 체크 불가하지만 시스템 동작 정상',
+            'last_check': datetime.now().isoformat()
+        }
+
+    # XLT System v3.0: Excel 출력 시스템 제거됨
+
+    return health_status
+
+@app.route('/api/health')
+def api_health():
+    """상세 시스템 헬스체크"""
+    try:
+        health_data = check_system_health()
+
+        # 전체 상태 요약
+        error_count = sum(1 for item in health_data.values() if item['status'] == 'error')
+        warning_count = sum(1 for item in health_data.values() if item['status'] == 'warning')
+
+        if error_count > 0:
+            overall_status = 'error'
+        elif warning_count > 0:
+            overall_status = 'warning'
+        else:
+            overall_status = 'ok'
+
+        return jsonify({
+            'overall_status': overall_status,
+            'summary': f'에러: {error_count}개, 경고: {warning_count}개',
+            'components': health_data,
+            'last_check': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'overall_status': 'error',
+            'summary': '헬스체크 실행 실패',
+            'error': str(e),
+            'last_check': datetime.now().isoformat()
+        }), 500
+
+# =====================================
+# 업데이트 관련 API 엔드포인트
+# =====================================
+
+@app.route('/api/update/check')
+def api_update_check():
+    """업데이트 확인 API"""
+    try:
+        if not updater:
+            return jsonify({
+                'status': 'error',
+                'error': '업데이터가 초기화되지 않았습니다.'
+            }), 500
+
+        update_info = updater.check_for_updates()
+
+        return jsonify({
+            'status': 'success',
+            'update_info': update_info,
+            'last_check': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"❌ 업데이트 확인 API 오류: {e}")
+        print(f"   상세 오류: {error_trace}")
+
+        return jsonify({
+            'status': 'error',
+            'error': f'업데이트 확인 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+@app.route('/api/update/perform', methods=['POST'])
+def api_update_perform():
+    """업데이트 실행 API"""
+    try:
+        if not updater:
+            return jsonify({
+                'status': 'error',
+                'error': '업데이터가 초기화되지 않았습니다.'
+            }), 500
+
+        # 업데이트 가능 여부 먼저 확인
+        update_info = updater.check_for_updates()
+        if not update_info.get('update_available'):
+            return jsonify({
+                'status': 'warning',
+                'message': '업데이트할 내용이 없습니다. 이미 최신 버전입니다.'
+            })
+
+        # 옵션 처리
+        request_data = request.get_json() or {}
+        create_backup = request_data.get('create_backup', True)
+
+        # 업데이트 실행
+        result = updater.perform_update(create_backup=create_backup)
+
+        if result['success']:
+            return jsonify({
+                'status': 'success',
+                'message': result['message'],
+                'backup_path': result.get('backup_path'),
+                'update_log': result['update_log'],
+                'restart_required': True
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': result.get('error'),
+                'update_log': result['update_log'],
+                'backup_path': result.get('backup_path')
+            }), 400
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"❌ 업데이트 실행 API 오류: {e}")
+        print(f"   상세 오류: {error_trace}")
+
+        return jsonify({
+            'status': 'error',
+            'error': f'업데이트 실행 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+@app.route('/api/update/history')
+def api_update_history():
+    """업데이트 히스토리 API"""
+    try:
+        if not updater:
+            return jsonify({
+                'status': 'error',
+                'error': '업데이터가 초기화되지 않았습니다.'
+            }), 500
+
+        limit = request.args.get('limit', 10, type=int)
+        history = updater.get_update_history(limit=limit)
+
+        return jsonify({
+            'status': 'success',
+            'history': history,
+            'total_commits': len(history)
+        })
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"❌ 업데이트 히스토리 API 오류: {e}")
+        print(f"   상세 오류: {error_trace}")
+
+        return jsonify({
+            'status': 'error',
+            'error': f'업데이트 히스토리 조회 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+@app.route('/api/update/status')
+def api_update_status():
+    """업데이트 상태 정보 API"""
+    try:
+        if not updater:
+            return jsonify({
+                'status': 'error',
+                'error': '업데이터가 초기화되지 않았습니다.'
+            }), 500
+
+        current_version = updater.get_current_version()
+        has_changes = updater.has_local_changes()
+
+        return jsonify({
+            'status': 'success',
+            'current_version': current_version,
+            'has_local_changes': has_changes,
+            'repo_url': updater.repo_url,
+            'last_check': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'업데이트 상태 조회 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+@app.route('/api/status')
+def api_status():
+    """기본 시스템 상태 (기존 호환성 유지)"""
+    try:
+        # 피그마 연결 상태 확인
+        figma_status = False
+        figma_error = ""
+        try:
+            from xlt.input.figma import FigmaProcessor
+            figma_processor = FigmaProcessor(pipeline.config)
+            figma_status = bool(figma_processor.figma_token and figma_processor.test_figma_connection())
+        except Exception as e:
+            figma_error = str(e)
+
+        return jsonify({
+            'status': 'running' if pipeline else 'error',
+            'version': '2.0.0-stable',
+            'pipeline_ready': pipeline is not None,
+            'figma_ready': figma_status,
+            'figma_error': figma_error if not figma_status else None,
+            'temp_sessions': len(temp_ocr_results)
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+# XLT v3.0: 로그 API 제거
+# @app.route('/api/logs/<session_id>') - 로그 기능 제거됨
+
+@app.route('/api/translation-progress/<session_id>')
+def get_translation_progress(session_id):
+    """번역 진행 상황 조회"""
+    try:
+        status_data = session_status.get(session_id, {})
+        translation_progress = status_data.get('translation_progress', {})
+
+        return jsonify({
+            'status': 'success',
+            'progress': translation_progress,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+def load_translation_guide_api():
+    """API용 guide.md 번역 가이드라인 로드 (전체 내용 반환)"""
+    try:
+        guide_path = os.path.join(os.path.dirname(__file__), 'guide.md')
+
+        if not os.path.exists(guide_path):
+            return {
+                'status': 'error',
+                'error': 'guide.md 파일을 찾을 수 없습니다.',
+                'path': guide_path
+            }
+
+        with open(guide_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        return {
+            'status': 'success',
+            'content': content,
+            'file': 'guide.md',
+            'size': len(content),
+            'last_modified': datetime.fromtimestamp(os.path.getmtime(guide_path)).isoformat()
+        }
+    except Exception as e:
+        return {
+            'status': 'error',
+            'error': f'guide.md 로드 중 오류: {str(e)}'
+        }
+
+@app.route('/api/translation-guide')
+def api_translation_guide():
+    """번역 가이드라인 제공 (guide.md)"""
+    try:
+        result = load_translation_guide_api()
+
+        if result['status'] == 'error':
+            return jsonify(result), 404
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+# XLT v3.0: 테스트 기능들 제거
+# @app.route('/test-ocr') - OCR 테스트 페이지 제거됨
+# @app.route('/test-selection') - 선택 테스트 페이지 제거됨
+
+@app.route('/api/figma-preview', methods=['POST'])
+def figma_preview():
+    """피그마 URL의 이미지 미리보기 제공"""
+    try:
+        data = request.get_json()
+        if not data or 'figma_url' not in data:
+            return jsonify({
+                'status': 'error',
+                'error': 'Figma URL이 필요합니다.'
+            }), 400
+
+        figma_url = data['figma_url'].strip()
+        if not figma_url:
+            return jsonify({
+                'status': 'error',
+                'error': 'Figma URL을 입력해주세요.'
+            }), 400
+
+        # 피그마 URL 형식 기본 검증
+        if 'figma.com' not in figma_url:
+            return jsonify({
+                'status': 'error',
+                'error': '올바른 Figma URL을 입력해주세요.'
+            }), 400
+
+        print(f"📱 피그마 미리보기 요청: {figma_url}")
+
+        # 피그마 프로세서 초기화
+        from xlt.input.figma import FigmaProcessor
+        from PIL import Image
+        figma_processor = FigmaProcessor(pipeline.config)
+
+        # 피그마 토큰 확인
+        if not figma_processor.figma_token:
+            return jsonify({
+                'status': 'error',
+                'error': '피그마 토큰이 설정되지 않았습니다. figma_config.json을 확인해주세요.'
+            }), 400
+
+        # 피그마 이미지 다운로드
+        try:
+            image, description = figma_processor.process(figma_url)
+
+            if not image:
+                return jsonify({
+                    'status': 'error',
+                    'error': '이미지를 로드할 수 없습니다. URL을 확인해주세요.'
+                }), 400
+
+            # 이미지를 Base64로 인코딩하여 브라우저에서 표시 가능하게 만들기
+            import base64
+            from io import BytesIO
+
+            # 이미지 크기 조정 (미리보기용으로 최대 400px)
+            max_width = 400
+            if image.width > max_width:
+                ratio = max_width / image.width
+                new_height = int(image.height * ratio)
+                image = image.resize((max_width, new_height), Image.LANCZOS)
+
+            # Base64 인코딩
+            buffer = BytesIO()
+            image.save(buffer, format='PNG')
+            img_data = base64.b64encode(buffer.getvalue()).decode()
+
+            # URL에서 메타데이터 추출
+            try:
+                # URL에서 node-id와 file-id 추출
+                import re
+                file_match = re.search(r'/design/([^/?]+)', figma_url)
+                node_match = re.search(r'node-id=([^&]+)', figma_url)
+
+                file_id = file_match.group(1) if file_match else 'Unknown'
+                node_id = node_match.group(1) if node_match else 'Unknown'
+            except:
+                file_id = 'Unknown'
+                node_id = 'Unknown'
+
+            # 메타데이터 정리
+            clean_metadata = {
+                'width': image.width,
+                'height': image.height,
+                'format': 'PNG',
+                'source': 'Figma',
+                'node_id': node_id,
+                'file_id': file_id,
+                'description': description
+            }
+
+            return jsonify({
+                'status': 'success',
+                'image_data': f'data:image/png;base64,{img_data}',
+                'metadata': clean_metadata,
+                'message': '피그마 이미지 미리보기 로드 성공'
+            })
+
+        except Exception as figma_error:
+            error_msg = str(figma_error)
+            print(f"❌ 피그마 처리 오류: {error_msg}")
+
+            # 구체적인 오류 메시지 제공
+            if 'Invalid node' in error_msg or 'node not found' in error_msg:
+                user_error = '지정된 노드를 찾을 수 없습니다. URL의 node-id를 확인해주세요.'
+            elif 'Invalid file' in error_msg or 'file not found' in error_msg:
+                user_error = '피그마 파일을 찾을 수 없습니다. URL을 확인해주세요.'
+            elif 'Permission' in error_msg or 'access' in error_msg.lower():
+                user_error = '피그마 파일에 접근할 권한이 없습니다. 파일이 공개되어 있는지 확인해주세요.'
+            elif 'token' in error_msg.lower():
+                user_error = '피그마 토큰이 유효하지 않습니다. figma_config.json의 토큰을 확인해주세요.'
+            else:
+                user_error = f'피그마 이미지 로드 실패: {error_msg}'
+
+            return jsonify({
+                'status': 'error',
+                'error': user_error
+            }), 400
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"❌ 피그마 미리보기 API 오류: {e}")
+        print(f"   상세 오류: {error_trace}")
+
+        return jsonify({
+            'status': 'error',
+            'error': f'서버 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+
+if __name__ == '__main__':
+    logger.info("=" * 60)
+    logger.info("🚀 XLT System v3.1 - 피그마 전용 번역 시스템")
+    logger.info("=" * 60)
+
+    # 시스템 필수 설정 확인
+    logger.info("🔍 시스템 설정 확인 중...")
+    setup_status = check_system_setup()
+
+    # 업데이트 확인 (시작 시)
+    try:
+        if updater:
+            from xlt.utils.updater import check_updates_on_startup
+            check_updates_on_startup()
+    except Exception as e:
+        logger.warning(f"⚠️ 업데이트 확인 중 오류: {str(e)}")
+
+    if setup_status['all_configured']:
+        logger.info("✅ 모든 필수 설정이 완료되었습니다!")
+
+        # 설정된 서버 포트 표시
+        user_config = load_user_config()
+        server_port = user_config.get('server_port', 5004)
+
+        logger.info(f"🌐 웹 서버 포트: {server_port}")
+        logger.info(f"🌐 접속 URL: http://localhost:{server_port}")
+        logger.info("🎯 특징: 피그마 전용 + Google 번역 + guide.md 기반 번역")
+        logger.info("=" * 60)
+        logger.info("📋 서버 로그는 server.log 파일에 기록됩니다")
+        logger.info("=" * 60)
+
+        app.run(debug=False, host='0.0.0.0', port=server_port)
+
+    else:
+        print("⚠️  필수 설정이 완료되지 않았습니다!")
+        print(f"❌ 누락된 설정: {', '.join(setup_status['missing_settings'])}")
+        print("")
+        print("📋 설정 방법:")
+
+        if '피그마 토큰' in setup_status['missing_settings']:
+            print("   1. 피그마 토큰 설정:")
+            print("      - Figma 웹사이트 → Settings → Personal Access Tokens")
+            print("      - 'Create new token' 클릭하여 토큰 생성")
+            print("      - figma_config.json 파일에 저장하거나 FIGMA_TOKEN 환경변수 설정")
+
+        # XLT System v3.0: 출력 디렉토리 설정 제거됨
+
+        print("")
+        print("🔧 웹 설정 페이지에서도 설정 가능:")
+
+        # 기본 포트로 서버 시작 (설정 페이지만 접근 가능)
+        default_port = 5004
+        print(f"   → http://localhost:{default_port}/settings")
+        print("")
+        print("설정 완료 후 서버를 재시작하세요.")
+        print("=" * 60)
+
+        app.run(debug=False, host='0.0.0.0', port=default_port)

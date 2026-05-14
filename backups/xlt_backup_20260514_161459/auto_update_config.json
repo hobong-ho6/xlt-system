@@ -1,6 +1,6 @@
 {
   "check_interval": 21600,
-  "last_check_time": "2026-05-14T16:14:58.816522",
+  "last_check_time": "2026-05-14T16:14:34.456663",
   "last_known_version": "5.1.8",
   "update_history": [
     {
@@ -32,11 +32,10 @@
         "priority": "medium",
         "auto_update": true
       },
-      "auto_applied": true,
-      "completed_at": "2026-05-14T16:15:00.878875"
+      "auto_applied": false
     },
     {
-      "detected_at": "2026-05-14T16:15:00.879498",
+      "detected_at": "2026-05-14T16:14:35.696668",
       "version": "5.1.8",
       "classification": {
         "type": "patch",

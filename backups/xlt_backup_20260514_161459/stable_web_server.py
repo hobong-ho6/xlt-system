@@ -4638,25 +4638,18 @@ def api_terminology_test():
                 'error': 'LINE API에서 용어를 로드할 수 없습니다. API 연결 상태를 확인해주세요.'
             }), 400
 
-        # 전체 용어 추출 (모든 용어)
+        # 샘플 용어 추출 (처음 3개)
         sample_terms = []
-        all_terms = []
-
         for i, (korean, translations) in enumerate(unifi_translator.line_terminology.items()):
-            term_data = {
+            if i >= 3:  # 처음 3개만
+                break
+            sample_terms.append({
                 'korean': korean,
                 'english': translations.get('en_US', ''),
                 'japanese': translations.get('ja_JP', ''),
                 'chinese': translations.get('zh_TW', ''),
                 'thai': translations.get('th_TH', '')
-            }
-
-            # 전체 용어 리스트에 추가
-            all_terms.append(term_data)
-
-            # 샘플 용어는 처음 3개만 (기존 호환성 유지)
-            if i < 3:
-                sample_terms.append(term_data)
+            })
 
         print(f"✅ LINE API 용어집 테스트 성공: {terminology_count}개 용어 로드됨")
 
@@ -4665,7 +4658,6 @@ def api_terminology_test():
             'message': 'LINE API 용어집이 정상적으로 로드되었습니다.',
             'terminology_count': terminology_count,
             'sample_terms': sample_terms,
-            'all_terms': all_terms,
             'api_url': 'https://landpress-content.line-scdn.net/contents/v2/projects/wdmwbfuv10x39bukv58ocevp/collections/web3_xlt_json/item'
         })
 

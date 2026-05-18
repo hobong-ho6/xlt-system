@@ -1,0 +1,30 @@
+{
+  "data": {
+    "거래": {
+      "ko_KR": "거래",
+      "en_US": "transaction",
+      "ja_JP": "取引",
+      "zh_TW": "交易",
+      "th_TH": "ธุรกรรม"
+    },
+    "지갑": {
+      "ko_KR": "지갑",
+      "en_US": "wallet",
+      "ja_JP": "ウォレット",
+      "zh_TW": "錢包",
+      "th_TH": "กระเป๋า"
+    }
+  },
+  "metadata": {
+    "cached_at": "2026-05-13T15:28:15.887390+09:00",
+    "expires_at": "2026-05-13T17:28:15.887390+09:00",
+    "data_hash": "11edbe6ea5b4685c8673001d09ed9b66",
+    "total_terms": 2,
+    "source_metadata": {
+      "sheet_id": "test_sheet_123",
+      "last_updated": "2026-05-13",
+      "version": "v1.0"
+    },
+    "cache_version": "1.0"
+  }
+}

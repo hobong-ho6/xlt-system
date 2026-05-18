@@ -1,10 +1,11 @@
 {
   "name": "XLT System",
-  "version": "5.1.11",
-  "build": "2026-05-14",
+  "version": "5.1.12",
+  "build": "2026-05-18",
   "installation_type": "git",
   "priority": "important",
   "features": [
+    "📊 Google Sheets 기반 용어집 관리 시스템 - 실시간 협업 가능한 용어집 관리 및 캐싱 시스템 통합",
     "🚀 LINE API 다중 엔드포인트 지원 - API 변경에도 자동 적응하는 견고한 연결 시스템",
     "🔄 테스트 데이터 fallback 시스템 - LINE API 실패 시 기본 용어로 기능 유지",
     "📊 상세한 API 응답 로깅 - 디버깅 및 문제 해결을 위한 완전한 추적 시스템",

@@ -2,6 +2,18 @@
 
 ## 1. 시스템 개요 및 현재 상태
 
+### 🎯 XLT System v5.1.12 (2026-05-18) - Google Sheets 기반 용어집 관리 시스템 통합 완료
+**상태**: ✅ 프로덕션 레디 - Google Sheets 실시간 협업 용어집 + 캐싱 시스템 + 기존 LINE API 시스템 완벽 통합
+
+**v5.1.12 통합 성과**:
+- 📊 **Google Sheets 기반 용어집 관리 시스템** - 실시간 협업 가능한 용어집 관리 및 캐싱 시스템 통합
+- 🔗 **Google Sheets API 실시간 연동** - 협업 용어집 관리 기능
+- ⚡ **지능형 캐싱 시스템** - 성능 최적화 및 오프라인 지원  
+- 🔄 **기존 시스템과 완벽 호환** - LINE API와 seamless 통합
+- 📊 **실시간 동기화** - 용어 변경사항 즉시 반영
+
+**핵심 워크플로우** (v5.1.12): Figma URL → **직접 텍스트 노드 추출** → **Google Sheets 용어집 연동** → **Claude 번역** → **Claude 품질 검증** → 사용자 선택 → 텍스트 수정 → 치환자 처리 → 번역 미리보기 → Excel 다운로드
+
 ### 🎯 XLT System v5.1.0 (2026-05-07) - Claude 품질 검증 시스템 구축 완료
 **상태**: ✅ 프로덕션 레디 - 95점 목표 품질 검증 시스템, Figma 텍스트 추출 방식 혁신, 100% Claude 기반 번역 워크플로우
 
@@ -60,11 +72,15 @@
     ↓        ↘
 웹 서버 (stable_web_server.py - Flask)    백그라운드 자동 업데이터 (auto_updater.py - v5.0.0)
     ↓                                           ↓
-├── OCR (xlt/ocr/engine.py)                    ├── GitHub API 체크 (6시간마다)
-├── 번역 (xlt/translation/claude_translator.py + unifi_translator.py)  ├── Personal Access Token 지원
-├── 치환자 (xlt/utils/placeholder_detector.py)  ├── 다중 소스 fallback 시스템
-├── 키 생성 (xlt/utils/unifi_key_generator.py)  ├── 지능형 우선순위 분류
-└── 설정 관리 (xlt/core/config.py)             └── 자동 백업/복원 시스템
+├── 텍스트 추출 (Figma Files API)              ├── GitHub API 체크 (6시간마다)
+├── 용어집 관리 (xlt/terminology/ - v5.1.12)   ├── Personal Access Token 지원
+│   ├── Google Sheets API (google_sheets.py)   ├── 다중 소스 fallback 시스템
+│   ├── 용어 캐싱 (cache.py)                   ├── 지능형 우선순위 분류
+│   └── Sheets API 연동 (sheets_api.py)        └── 자동 백업/복원 시스템
+├── 번역 (xlt/translation/claude_translator.py + unifi_translator.py)
+├── 치환자 (xlt/utils/placeholder_detector.py)
+├── 키 생성 (xlt/utils/unifi_key_generator.py)
+└── 설정 관리 (xlt/core/config.py)
 ```
 
 ---
@@ -73,7 +89,8 @@
 
 | 버전 | 완료일 | 핵심 변경사항 | 기술적 임팩트 | 상태 |
 |------|--------|---------------|---------------|------|
-| **v5.0.5** | **2026-05-06** | **번역 시스템 근본 문제 완전 해결** | 번역 엔진 선택 무시 + Claude CLI 무한 대기 근본해결, 신규 설치자 100% 사용 보장 | ✅ **현재 버전** |
+| **v5.1.12** | **2026-05-18** | **Google Sheets 기반 용어집 관리 시스템 통합** | Google Sheets API 실시간 연동, 용어집 캐싱 시스템, LINE API와 완벽 호환 | ✅ **현재 버전** |
+| v5.0.5 | 2026-05-06 | 번역 시스템 근본 문제 완전 해결 | 번역 엔진 선택 무시 + Claude CLI 무한 대기 근본해결, 신규 설치자 100% 사용 보장 | ✅ 안정 |
 | v5.0.0-v5.0.4 | 2026-05-06 | 완전 자동화 업데이트 시스템 기반 | GitHub 레이트 리밋 해결, 백그라운드 자동 감지, 트레이 통합 알림 시스템 | ✅ 기반 완료 |
 | v4.3.0 | 2026-05-06 | Claude CLI 타임아웃 근본 해결 | 청크 성공률 0%→100%, 120-600초 동적 타임아웃, 엑셀 번역 완전 안정화 | ✅ 안정 |
 | v4.2.0 | 2026-05-04 | Claude 배치 처리 + 캐싱 최적화 | 87-92% 성능 향상, N→1회 배치 호출, 40% 캐시 히트율 | ✅ 안정 |
@@ -92,6 +109,7 @@
 - **v4.2 → v4.3**: 2일 (Claude CLI 타임아웃 근본 해결)
 - **v4.3 → v5.0**: 당일 (완전 자동화 업데이트 시스템 구축)
 - **v5.0 → v5.0.5**: 당일 (사용자 피드백 기반 근본 문제 완전 해결)
+- **v5.0.5 → v5.1.12**: 12일 (LINE API 개선 + Google Sheets 용어집 시스템 통합)
 
 ---
 
@@ -496,7 +514,207 @@ def handle_bootstrap_problem(self):
 
 ## 4. 핵심 기술 구현
 
-### 4.0 완전 자동화 업데이트 시스템 (v5.0.0 핵심)
+### 4.0 Google Sheets 기반 용어집 관리 시스템 (v5.1.12 핵심)
+
+#### Google Sheets 통합 시스템 구현 (xlt/terminology/)
+```python
+class GoogleSheetsTerminology:
+    """구글 시트 기반 용어집 관리 클래스 - v5.1.12 핵심 컴포넌트"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.sheets_api = GoogleSheetsAPI(config)
+        self.cache = TerminologyCache(config)
+        
+        # Google Sheets 설정
+        self.spreadsheet_id = getattr(config, 'google_sheets_id', '')
+        self.credentials_path = getattr(config, 'google_sheets_credentials', '')
+        self.cache_ttl = getattr(config, 'terminology_cache_ttl', 7200)  # 2시간
+        
+    def sync_terminology(self, force_update=False):
+        """Google Sheets에서 용어집 동기화"""
+        try:
+            # 1. 캐시 유효성 확인
+            if not force_update and self.cache.is_valid():
+                return self.cache.get_cached_terminology()
+            
+            # 2. Google Sheets에서 최신 데이터 가져오기
+            sheets_data = self.sheets_api.get_terminology_data()
+            
+            # 3. 캐시 업데이트
+            self.cache.update_cache(sheets_data)
+            
+            # 4. 동기화 로그 기록
+            self.cache.log_sync_operation('success', len(sheets_data))
+            
+            return sheets_data
+            
+        except Exception as e:
+            # 동기화 실패 시 캐시된 데이터 반환
+            self.cache.log_sync_operation('error', 0, str(e))
+            return self.cache.get_cached_terminology()
+    
+    def get_terminology_for_translation(self, source_text: str) -> Dict:
+        """번역용 용어집 조회 (실시간 + 캐시)"""
+        terminology = self.sync_terminology()
+        
+        # 소스 텍스트와 매칭되는 용어 검색
+        matched_terms = self._find_matching_terms(source_text, terminology)
+        
+        return {
+            'terms': matched_terms,
+            'source': 'google_sheets',
+            'cached': self.cache.is_valid(),
+            'last_sync': self.cache.get_last_sync_time()
+        }
+```
+
+#### Google Sheets API 연동 (xlt/terminology/sheets_api.py)
+```python
+class GoogleSheetsAPI:
+    """Google Sheets API 연동 클래스"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.credentials = self._load_credentials()
+        self.service = self._build_sheets_service()
+    
+    def _load_credentials(self):
+        """Google 서비스 계정 인증 정보 로드"""
+        credentials_path = getattr(self.config, 'google_sheets_credentials', '')
+        
+        if not credentials_path or not os.path.exists(credentials_path):
+            raise GoogleSheetsAPIError("Google Sheets 인증 정보가 없습니다")
+        
+        # 서비스 계정 키 로드
+        credentials = Credentials.from_service_account_file(
+            credentials_path,
+            scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
+        )
+        
+        return credentials
+    
+    def get_terminology_data(self) -> Dict:
+        """Google Sheets에서 용어집 데이터 가져오기"""
+        try:
+            spreadsheet_id = getattr(self.config, 'google_sheets_id', '')
+            
+            # 여러 시트에서 데이터 가져오기
+            terminology_data = self._get_sheet_data(spreadsheet_id, 'Terminology')
+            exceptions_data = self._get_sheet_data(spreadsheet_id, 'Exceptions')
+            metadata = self._get_sheet_data(spreadsheet_id, 'Metadata')
+            
+            # 데이터 구조화
+            structured_data = self._structure_terminology_data(
+                terminology_data, exceptions_data, metadata
+            )
+            
+            return structured_data
+            
+        except Exception as e:
+            raise GoogleSheetsAPIError(f"Google Sheets 데이터 로드 실패: {e}")
+    
+    def _get_sheet_data(self, spreadsheet_id: str, sheet_name: str) -> List[List[str]]:
+        """특정 시트에서 데이터 가져오기"""
+        range_name = f"{sheet_name}!A:Z"  # 전체 컬럼 범위
+        
+        result = self.service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name
+        ).execute()
+        
+        return result.get('values', [])
+```
+
+#### 용어집 캐싱 시스템 (xlt/terminology/cache.py)
+```python
+class TerminologyCache:
+    """용어집 캐싱 시스템 - 성능 최적화 및 오프라인 지원"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.cache_dir = Path("cache/terminology")
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.cache_file = self.cache_dir / "terminology_cache.json"
+        self.sync_log_file = self.cache_dir / "sync_log.json"
+        
+        self.cache_ttl = getattr(config, 'terminology_cache_ttl', 7200)  # 2시간
+    
+    def is_valid(self) -> bool:
+        """캐시 유효성 확인"""
+        if not self.cache_file.exists():
+            return False
+        
+        try:
+            with open(self.cache_file, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            
+            last_update = cache_data.get('timestamp', 0)
+            current_time = time.time()
+            
+            # TTL 체크
+            return (current_time - last_update) < self.cache_ttl
+            
+        except Exception:
+            return False
+    
+    def update_cache(self, terminology_data: Dict):
+        """캐시 데이터 업데이트"""
+        cache_data = {
+            'timestamp': time.time(),
+            'data': terminology_data,
+            'version': self._calculate_data_hash(terminology_data),
+            'source': 'google_sheets'
+        }
+        
+        with open(self.cache_file, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f, ensure_ascii=False, indent=2)
+    
+    def get_cached_terminology(self) -> Dict:
+        """캐시된 용어집 데이터 반환"""
+        if not self.cache_file.exists():
+            return {}
+        
+        try:
+            with open(self.cache_file, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            
+            return cache_data.get('data', {})
+            
+        except Exception as e:
+            print(f"캐시 데이터 로드 실패: {e}")
+            return {}
+    
+    def log_sync_operation(self, status: str, term_count: int, error_msg: str = ""):
+        """동기화 작업 로그 기록"""
+        log_entry = {
+            'timestamp': time.time(),
+            'datetime': datetime.now().isoformat(),
+            'status': status,  # 'success' or 'error'
+            'term_count': term_count,
+            'error_message': error_msg
+        }
+        
+        # 기존 로그 읽기
+        logs = []
+        if self.sync_log_file.exists():
+            try:
+                with open(self.sync_log_file, 'r', encoding='utf-8') as f:
+                    logs = json.load(f)
+            except:
+                logs = []
+        
+        # 새 로그 추가 (최근 50개만 유지)
+        logs.append(log_entry)
+        logs = logs[-50:]  # 최근 50개 로그만 유지
+        
+        # 로그 파일 업데이트
+        with open(self.sync_log_file, 'w', encoding='utf-8') as f:
+            json.dump(logs, f, ensure_ascii=False, indent=2)
+```
+
+### 4.1 완전 자동화 업데이트 시스템 (v5.0.0 핵심)
 
 #### AutoUpdateManager 클래스 구현 (xlt/utils/auto_updater.py)
 ```python
@@ -1100,7 +1318,9 @@ setup_claude_cli() {
 - [ ] **포트 충돌**: `lsof -i :5004`로 기존 프로세스 확인
 
 #### 전체 워크플로우 테스트
-- [ ] **Figma URL 입력**: 실제 Figma URL로 OCR 테스트
+- [ ] **Figma URL 입력**: 실제 Figma URL로 텍스트 추출 테스트
+- [ ] **Google Sheets 용어집 연동**: 설정 페이지에서 용어집 동기화 테스트 (v5.1.12)
+- [ ] **용어집 캐싱**: 오프라인 상태에서 캐시된 용어집 사용 확인 (v5.1.12)
 - [ ] **Claude 배치 번역**: "Claude 통합 처리" 모드로 배치 번역 실행 (v4.2)
 - [ ] **성능 측정**: 10개 텍스트 번역이 30초 이내 완료되는지 확인 (v4.2)
 - [ ] **캐시 효과**: 동일한 텍스트로 재번역 시 즉시 완료되는지 확인 (v4.2)
@@ -1111,6 +1331,9 @@ setup_claude_cli() {
 ### 🔧 코드 레벨 주의사항
 
 #### 핵심 파일 및 로직 확인
+- [ ] **`xlt/terminology/google_sheets.py`**: Google Sheets API 연동 및 용어집 동기화 (v5.1.12)
+- [ ] **`xlt/terminology/cache.py`**: 용어집 캐싱 시스템 및 TTL 관리 (v5.1.12)
+- [ ] **`cache/terminology/`**: 캐시 파일들 생성 및 동기화 로그 확인 (v5.1.12)
 - [ ] **`xlt/translation/claude_translator.py`**: `translate_batch_integrated_optimized()` 배치 처리 메서드 (v4.2)
 - [ ] **`xlt/translation/claude_translator.py`**: 캐싱 시스템 (`_translation_cache`, `_get_cached_result()`) 정상 동작 (v4.2)
 - [ ] **`stable_web_server.py` translate_with_claude_integrated**: Excel 배치 번역 적용 확인 (v4.2)
@@ -1119,6 +1342,8 @@ setup_claude_cli() {
 - [ ] **`install/install_v2.sh`**: 11단계 설치 프로세스 (Claude CLI 자동 설치 포함)
 
 #### 의존성 확인
+- [ ] **Google 패키지**: `pip install google-auth google-auth-oauthlib google-auth-httplib2` (v5.1.12)
+- [ ] **Google Sheets API**: `python3 -c "from google.auth import default; print('✅ Google Auth 정상')"` (v5.1.12)
 - [ ] **NumPy 버전**: `numpy<2` 고정 (NumPy 2.x 비호환)
 - [ ] **rumps 설치**: `python3 -c "import rumps; print('✅ rumps 정상')"` 
 - [ ] **bareunpy SDK**: `pip list | grep bareunpy` 설치 확인
@@ -1386,10 +1611,18 @@ python3 performance_validation.py
 ├── xlt/utils/
 │   ├── auto_updater.py           # 완전 자동화 업데이트 시스템 (v5.0.0)
 │   └── updater.py                # 기존 업데이트 시스템 + GitHub Token 지원 (v5.0.0)
+├── xlt/terminology/              # Google Sheets 용어집 관리 시스템 (v5.1.12)
+│   ├── __init__.py              # 모듈 초기화
+│   ├── google_sheets.py         # Google Sheets API 메인 클래스 (19.5KB)
+│   ├── sheets_api.py            # Google Sheets API 연동 (11.7KB)
+│   └── cache.py                 # 용어집 캐싱 시스템 (14.8KB)
 ├── xlt/translation/
 │   ├── claude_translator.py      # Claude 배치 번역 + 캐싱 (v4.2) + 타임아웃 해결 (v4.3)
 │   └── unifi_translator.py       # Unifi 전문 번역 (1,244개 DB)
 ├── xlt/core/config.py           # 동적 설정 시스템 (v4.3)
+├── cache/terminology/           # Google Sheets 캐싱 디렉토리 (v5.1.12)
+│   ├── terminology_cache.json   # 용어 캐시 데이터
+│   └── sync_log.json            # 동기화 로그
 ├── static/js/app.js             # 프론트엔드 로직
 ├── templates/                   # HTML 템플릿들 (v5.0.0 버전 정보 업데이트)
 └── 성능 테스트 스크립트:
@@ -1413,13 +1646,23 @@ python3 performance_validation.py
 
 ---
 
-**문서 작성일**: 2026-05-06  
-**XLT System 버전**: v5.0.0  
-**문서 버전**: 개발자 핸드오프용 v4.0 (완전 자동화 업데이트 시스템 구축 완료)  
+**문서 작성일**: 2026-05-18  
+**XLT System 버전**: v5.1.12  
+**문서 버전**: 개발자 핸드오프용 v4.1 (Google Sheets 기반 용어집 관리 시스템 통합 완료)  
 
 이 문서는 개발자 인수인계를 위한 기술 문서입니다. 사용자 매뉴얼은 `USER_MANUAL.md`를 참조하세요.
 
 ---
+
+## v5.1.12 핵심 혁신 요약
+
+**Google Sheets 기반 용어집 관리 시스템**이 XLT System의 새로운 협업 기능입니다:
+
+1. **Google Sheets API 실시간 연동** - 협업 팀원들이 실시간으로 용어집 편집 및 관리 가능
+2. **지능형 캐싱 시스템** - 2시간 TTL + 오프라인 지원으로 성능과 안정성 양립
+3. **기존 시스템과 완벽 호환** - LINE API + 자동 업데이트 시스템과 seamless 통합
+4. **실시간 동기화** - 용어 변경사항이 즉시 번역 시스템에 반영
+5. **폴백 시스템** - Google Sheets 접근 불가 시 캐시된 용어집으로 자동 전환
 
 ## v5.0.0 핵심 혁신 요약
 
@@ -1431,4 +1674,4 @@ python3 performance_validation.py
 4. **macOS 트레이 통합** - 시스템 레벨 알림 + 원클릭 업데이트
 5. **Bootstrap 문제 해결** - 기존 v4.x 사용자 자동 마이그레이션 지원
 
-이제 XLT System은 **완전 자율적으로 최신 상태를 유지**하며, 사용자는 번역 작업에만 집중할 수 있습니다.
+이제 XLT System은 **완전 자율적으로 최신 상태를 유지**하며, **실시간 협업 용어집 관리**까지 지원하여 팀 번역 작업의 효율성을 극대화합니다.

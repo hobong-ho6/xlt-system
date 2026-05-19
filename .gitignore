@@ -4,7 +4,6 @@ git_remote_backup.txt
 
 # 테스트 및 생성 파일들
 downloads/
-output/
 *.xlsx
 *.xls
 *.log

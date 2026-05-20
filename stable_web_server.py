@@ -5194,9 +5194,67 @@ def api_excel_validate_progress(session_id):
             'error': f'진행 상태 조회 중 오류: {str(e)}'
         }), 500
 
+def group_validation_results_by_key_id(validation_result: dict) -> dict:
+    """검증 결과를 key_id 기준으로 그룹핑"""
+    try:
+        grouped_results = {}
+        detailed_results = validation_result.get('detailed_results', {})
+
+        # 각 검증 타입별로 이슈를 key_id로 그룹핑
+        for validation_type, validation_data in detailed_results.items():
+            issues = validation_data.get('issues', [])
+            exceptions = validation_data.get('exceptions', [])
+
+            for issue in issues:
+                key_id = issue.get('key_id', 'unknown')
+                row_number = issue.get('row_number', 0)
+
+                if key_id not in grouped_results:
+                    grouped_results[key_id] = {
+                        'key_id': key_id,
+                        'row_number': row_number,
+                        'issues': [],
+                        'exceptions': []
+                    }
+
+                # 이슈 타입별로 분류
+                issue_copy = issue.copy()
+                issue_copy['validation_type'] = validation_type
+                grouped_results[key_id]['issues'].append(issue_copy)
+
+            # exceptional 항목들도 처리
+            for exception in exceptions:
+                key_id = exception.get('key_id', 'unknown')
+                row_number = exception.get('row_number', 0)
+
+                if key_id not in grouped_results:
+                    grouped_results[key_id] = {
+                        'key_id': key_id,
+                        'row_number': row_number,
+                        'issues': [],
+                        'exceptions': []
+                    }
+
+                exception_copy = exception.copy()
+                exception_copy['validation_type'] = validation_type
+                grouped_results[key_id]['exceptions'].append(exception_copy)
+
+        return {
+            'grouped_by_key_id': list(grouped_results.values()),
+            'total_affected_keys': len(grouped_results)
+        }
+
+    except Exception as e:
+        logger.error(f"❌ 검증 결과 그룹핑 오류: {e}")
+        return {
+            'grouped_by_key_id': [],
+            'total_affected_keys': 0,
+            'grouping_error': str(e)
+        }
+
 @app.route('/api/excel-validate-report/<session_id>')
 def api_excel_validate_report(session_id):
-    """엑셀 검증 완료 리포트 조회"""
+    """엑셀 검증 완료 리포트 조회 - Key ID 기준 그룹핑"""
     try:
         if session_id not in session_status:
             return jsonify({
@@ -5213,6 +5271,11 @@ def api_excel_validate_report(session_id):
             }), 400
 
         result = session_data.get('result', {})
+
+        # 기존 결과에 Key ID 기준 그룹핑 추가
+        grouped_results = group_validation_results_by_key_id(result)
+        result['grouped_results'] = grouped_results
+
         return jsonify({
             'status': 'success',
             'session_id': session_id,

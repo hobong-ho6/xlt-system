@@ -2621,11 +2621,34 @@ class XLTWebInterface {
                 }
             });
 
-            if (detailsHtml) {
-                detailsDiv.innerHTML = `
-                    <h6>검증 상세 결과:</h6>
-                    <div class="accordion">${detailsHtml}</div>
+            // Key ID 기준 그룹핑된 결과 표시
+            const groupedResults = validationResult.grouped_results || {};
+            const groupedByKeyId = groupedResults.grouped_by_key_id || [];
+
+            if (detailsHtml || groupedByKeyId.length > 0) {
+                let tabsHtml = `
+                    <ul class="nav nav-tabs" id="validation-detail-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="by-type-tab" data-bs-toggle="tab" data-bs-target="#by-type" type="button" role="tab">
+                                <i class="fas fa-list me-2"></i>검증 타입별 (${Object.keys(detailedResults).length})
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="by-keyid-tab" data-bs-toggle="tab" data-bs-target="#by-keyid" type="button" role="tab">
+                                <i class="fas fa-key me-2"></i>Key ID별 (${groupedByKeyId.length})
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content" id="validation-detail-content">
+                        <div class="tab-pane fade show active" id="by-type" role="tabpanel">
+                            ${detailsHtml ? `<div class="accordion mt-3">${detailsHtml}</div>` : '<div class="alert alert-success mt-3"><i class="fas fa-check me-2"></i>모든 검증을 통과했습니다!</div>'}
+                        </div>
+                        <div class="tab-pane fade" id="by-keyid" role="tabpanel">
+                            ${this.generateGroupedByKeyIdResults(groupedByKeyId)}
+                        </div>
+                    </div>
                 `;
+                detailsDiv.innerHTML = tabsHtml;
             } else {
                 detailsDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check me-2"></i>모든 검증을 통과했습니다!</div>';
             }
@@ -2644,6 +2667,90 @@ class XLTWebInterface {
             console.error('❌ 검증 결과 표시 오류:', error);
             this.showAlert('검증 결과 표시 중 오류가 발생했습니다.', 'error');
         }
+    }
+
+    generateGroupedByKeyIdResults(groupedData) {
+        if (!groupedData || groupedData.length === 0) {
+            return '<div class="alert alert-success mt-3"><i class="fas fa-check me-2"></i>문제가 발견된 Key ID가 없습니다!</div>';
+        }
+
+        let html = '<div class="mt-3">';
+
+        groupedData.forEach((keyData, index) => {
+            const keyId = keyData.key_id;
+            const rowNumber = keyData.row_number;
+            const issues = keyData.issues || [];
+            const exceptions = keyData.exceptions || [];
+            const totalProblems = issues.length + exceptions.length;
+
+            // Key ID별 카드 생성
+            html += `
+                <div class="card mb-3 ${totalProblems > 0 ? 'border-danger' : 'border-success'}">
+                    <div class="card-header ${totalProblems > 0 ? 'bg-danger text-white' : 'bg-success text-white'}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="fas fa-key me-2"></i>
+                                <strong>${keyId}</strong>
+                                <small>(행 ${rowNumber})</small>
+                            </h6>
+                            <span class="badge bg-light text-dark">
+                                ${totalProblems > 0 ? `${totalProblems}개 문제` : '✓ 정상'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+            `;
+
+            // 이슈 목록
+            if (issues.length > 0) {
+                html += '<h6 class="text-danger mb-2"><i class="fas fa-exclamation-triangle me-2"></i>발견된 문제:</h6>';
+                html += '<div class="row">';
+
+                issues.forEach(issue => {
+                    const validationType = this.getValidationSectionTitle(issue.validation_type);
+                    const validationIcon = this.getValidationSectionIcon(issue.validation_type);
+
+                    html += `
+                        <div class="col-md-6 mb-2">
+                            <div class="alert alert-danger mb-2">
+                                <small class="text-muted">${validationIcon} ${validationType}</small><br>
+                                <strong>${issue.text || issue.description || '내용 확인 필요'}</strong>
+                    `;
+
+                    if (issue.wrong_term && issue.suggested_term) {
+                        html += `<br><small>❌ ${issue.wrong_term} → ✅ ${issue.suggested_term}</small>`;
+                    }
+                    if (issue.missing_languages && issue.missing_languages.length > 0) {
+                        html += `<br><small>빈 필드: ${issue.missing_languages.join(', ')}</small>`;
+                    }
+                    if (issue.detected_language && issue.expected_language) {
+                        html += `<br><small>${issue.detected_language} → ${issue.expected_language} 필요</small>`;
+                    }
+
+                    html += '</div></div>';
+                });
+
+                html += '</div>';
+            }
+
+            // 예외 항목 (검증 통과)
+            if (exceptions.length > 0) {
+                html += '<h6 class="text-info mb-2"><i class="fas fa-shield-alt me-2"></i>검증 통과 (예외):</h6>';
+                exceptions.forEach(exception => {
+                    html += `
+                        <div class="alert alert-info">
+                            <small>${exception.text}</small><br>
+                            <small class="text-muted">사유: ${exception.exception_reason}</small>
+                        </div>
+                    `;
+                });
+            }
+
+            html += '</div></div>';
+        });
+
+        html += '</div>';
+        return html;
     }
 
     async startAutoCorrection() {

@@ -447,8 +447,11 @@ class ExcelValidator:
             return {'status': 'error', 'issues': [], 'error': str(e)}
 
     def _validate_data_completeness(self) -> Dict[str, Any]:
-        """데이터 완성도 검증"""
+        """데이터 완성도 검증 - 빈칸 검증 강화"""
         try:
+            # 로컬 빈칸 검증 먼저 수행
+            local_issues = self._check_empty_cells()
+
             # 완성도 데이터 준비 (Key ID와 행번호 포함)
             completeness_data = []
             row_number = 2  # 엑셀은 2행부터 데이터 시작
@@ -464,32 +467,91 @@ class ExcelValidator:
             prompt = self.prompts.get_completeness_validation_prompt(completeness_data)
             response = self._call_claude_ai(prompt)
 
+            # 결과 통합
+            all_issues = local_issues.copy()  # 로컬 빈칸 검증 결과
+
             if response:
-                # 결과 처리 - key_id와 row_number 정보 보존
-                issues = []
+                # Claude AI 결과 추가 - key_id와 row_number 정보 보존
                 for issue in response.get('issues', []):
                     # Claude AI가 반환한 key_id 사용 (실제 엑셀 데이터)
-                    issues.append({
+                    claude_issue = {
                         'key_id': issue.get('key_id', 'unknown'),
                         'row_number': issue.get('row_number', 0),
                         'issue_type': issue.get('issue_type', 'completeness'),
                         'description': issue.get('description', ''),
                         'missing_languages': issue.get('missing_languages', [])
-                    })
+                    }
+
+                    # 중복 방지: 동일한 key_id의 빈칸 이슈가 있으면 병합
+                    existing_issue = None
+                    for local_issue in all_issues:
+                        if (local_issue['key_id'] == claude_issue['key_id'] and
+                            local_issue['issue_type'] == 'empty_cells'):
+                            existing_issue = local_issue
+                            break
+
+                    if existing_issue:
+                        # 기존 빈칸 이슈와 Claude 결과 병합
+                        existing_issue['claude_analysis'] = claude_issue['description']
+                    else:
+                        # 새로운 이슈 추가
+                        all_issues.append(claude_issue)
 
                 summary = response.get('summary', {})
-
-                return {
-                    'status': 'completed',
-                    'issues': issues,
-                    'summary': summary
+            else:
+                summary = {
+                    'total_rows': len(completeness_data),
+                    'empty_cells_found': len(local_issues)
                 }
 
-            return {'status': 'claude_error', 'issues': []}
+            logger.info(f"✅ 완성도 검증 완료: 로컬 {len(local_issues)}개 + Claude AI 검증")
+
+            return {
+                'status': 'completed',
+                'issues': all_issues,
+                'summary': summary,
+                'local_empty_check': len(local_issues),
+                'total_issues': len(all_issues)
+            }
 
         except Exception as e:
             logger.error(f"❌ 데이터 완성도 검증 오류: {e}")
             return {'status': 'error', 'issues': [], 'error': str(e)}
+
+    def _check_empty_cells(self) -> List[Dict[str, Any]]:
+        """로컬 빈칸 검증 - 직접 빈 셀 탐지"""
+        empty_issues = []
+        row_number = 2  # 엑셀은 2행부터 데이터 시작
+
+        languages = ['ko_KR', 'en_US', 'ja_JP', 'zh_TW', 'th_TH']
+
+        for key_id, row_data in self.excel_data.items():
+            missing_languages = []
+
+            for lang in languages:
+                value = row_data.get(lang, '')
+                # 빈값 체크: None, 빈 문자열, 공백만 있는 경우
+                if not value or str(value).strip() == '' or str(value).lower() in ['none', 'null', 'nan']:
+                    missing_languages.append(lang)
+
+            if missing_languages:
+                # ko_KR이 빈값이면 critical, 다른 언어는 warning
+                issue_severity = 'critical' if 'ko_KR' in missing_languages else 'warning'
+
+                empty_issues.append({
+                    'key_id': key_id,
+                    'row_number': row_number,
+                    'issue_type': 'empty_cells',
+                    'severity': issue_severity,
+                    'missing_languages': missing_languages,
+                    'description': f"빈 필드 발견: {', '.join(missing_languages)}",
+                    'total_missing': len(missing_languages)
+                })
+
+            row_number += 1
+
+        logger.info(f"📊 로컬 빈칸 검증: {len(empty_issues)}개 문제 발견")
+        return empty_issues
 
     def _call_claude_ai(self, prompt: str) -> Optional[Dict[str, Any]]:
         """Claude AI 호출"""

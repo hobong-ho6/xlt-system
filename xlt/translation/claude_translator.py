@@ -444,16 +444,18 @@ class ClaudeTranslator:
         }
 
     def test_connection(self) -> bool:
-        """Claude CLI 연결 테스트 (실제 번역 시도)
+        """Claude CLI 연결 테스트 (빠른 인증 상태 체크)
 
         Returns:
             bool: 연결 성공 여부
         """
         try:
-            # 간단한 번역 테스트
-            test_result = self.translate_text("테스트", "en_US")
-            return test_result is not None and test_result.strip() != ""
-        except Exception:
+            # 빠른 인증 상태 체크 사용 (3초 이내 완료)
+            status_ok, status_msg = self.check_process_status()
+            print(f"🔍 Claude CLI 상태 체크: {status_msg}")
+            return status_ok
+        except Exception as e:
+            print(f"⚠️ Claude CLI 상태 체크 실패: {str(e)}")
             return False
 
     def check_process_status(self) -> tuple[bool, str]:

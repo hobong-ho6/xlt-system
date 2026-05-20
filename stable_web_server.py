@@ -2698,10 +2698,10 @@ def translate_selected():
                     'engine_name': engine_name,
                     'translation_mode': translation_mode,
                     'start_time': datetime.now().isoformat(),
-                    'timeout_seconds': 30
+                    'timeout_seconds': 5
                 })
 
-                # Claude CLI 연결 테스트 타임아웃 처리 (v5.0.6 Flask 워커 스레드 호환)
+                # Claude CLI 연결 테스트 타임아웃 처리 (v5.1.0 빠른 인증 상태 체크)
                 try:
                     import threading
                     import queue
@@ -2725,9 +2725,9 @@ def translate_selected():
                     test_thread.daemon = True
                     test_thread.start()
 
-                    # 30초 타임아웃으로 결과 대기
+                    # 5초 타임아웃으로 결과 대기 (빠른 인증 상태 체크)
                     try:
-                        result_type, result_value = result_queue.get(timeout=30)
+                        result_type, result_value = result_queue.get(timeout=5)
                         test_duration = time.time() - test_start_time
 
                         if result_type == 'success':
@@ -2753,13 +2753,13 @@ def translate_selected():
                         # 타임아웃 발생
                         timeout_occurred.set()
                         test_duration = time.time() - test_start_time
-                        logger.warning(f"[{session_id}] ⏰ Claude CLI 연결 테스트 타임아웃 (30초)")
+                        logger.warning(f"[{session_id}] ⏰ Claude CLI 연결 테스트 타임아웃 (5초)")
 
                         log_connection_test_detail(session_id, {
                             'method': 'threading + queue',
                             'result': 'timeout',
                             'duration': test_duration,
-                            'timeout_seconds': 30
+                            'timeout_seconds': 5
                         })
 
                         # Claude 타임아웃 시 연결 실패로 처리

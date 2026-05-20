@@ -2674,57 +2674,109 @@ class XLTWebInterface {
             return '<div class="alert alert-success mt-3"><i class="fas fa-check me-2"></i>문제가 발견된 Key ID가 없습니다!</div>';
         }
 
+        // 우선순위 요약 표시
         let html = '<div class="mt-3">';
+
+        const priorityCounts = this.calculatePriorityCounts(groupedData);
+        if (priorityCounts.critical > 0 || priorityCounts.high > 0) {
+            html += `
+                <div class="alert alert-warning mb-3">
+                    <h6><i class="fas fa-exclamation-triangle me-2"></i>우선 수정 권장 항목</h6>
+                    ${priorityCounts.critical > 0 ? `<span class="badge bg-danger me-2">시급 ${priorityCounts.critical}개</span>` : ''}
+                    ${priorityCounts.high > 0 ? `<span class="badge bg-warning me-2">높음 ${priorityCounts.high}개</span>` : ''}
+                    ${priorityCounts.medium > 0 ? `<span class="badge bg-info me-2">보통 ${priorityCounts.medium}개</span>` : ''}
+                    ${priorityCounts.low > 0 ? `<span class="badge bg-secondary me-2">낮음 ${priorityCounts.low}개</span>` : ''}
+                </div>
+            `;
+        }
 
         groupedData.forEach((keyData, index) => {
             const keyId = keyData.key_id;
             const rowNumber = keyData.row_number;
             const issues = keyData.issues || [];
             const exceptions = keyData.exceptions || [];
+            const maxSeverity = keyData.max_severity || 'medium';
             const totalProblems = issues.length + exceptions.length;
+
+            // 심각도에 따른 카드 스타일
+            const severityColors = {
+                'critical': 'border-danger',
+                'high': 'border-warning',
+                'medium': 'border-info',
+                'low': 'border-secondary'
+            };
+            const headerColors = {
+                'critical': 'bg-danger text-white',
+                'high': 'bg-warning text-dark',
+                'medium': 'bg-info text-white',
+                'low': 'bg-secondary text-white'
+            };
+
+            const cardBorder = severityColors[maxSeverity] || 'border-info';
+            const headerColor = headerColors[maxSeverity] || 'bg-info text-white';
 
             // Key ID별 카드 생성
             html += `
-                <div class="card mb-3 ${totalProblems > 0 ? 'border-danger' : 'border-success'}">
-                    <div class="card-header ${totalProblems > 0 ? 'bg-danger text-white' : 'bg-success text-white'}">
+                <div class="card mb-3 ${cardBorder}">
+                    <div class="card-header ${headerColor}">
                         <div class="d-flex justify-content-between align-items-center">
                             <h6 class="mb-0">
                                 <i class="fas fa-key me-2"></i>
                                 <strong>${keyId}</strong>
                                 <small>(행 ${rowNumber})</small>
                             </h6>
-                            <span class="badge bg-light text-dark">
-                                ${totalProblems > 0 ? `${totalProblems}개 문제` : '✓ 정상'}
-                            </span>
+                            <div>
+                                ${this.getSeverityBadge(maxSeverity)}
+                                <span class="badge bg-light text-dark ms-2">
+                                    ${totalProblems}개 문제
+                                </span>
+                            </div>
                         </div>
                     </div>
                     <div class="card-body">
             `;
 
-            // 이슈 목록
-            if (issues.length > 0) {
-                html += '<h6 class="text-danger mb-2"><i class="fas fa-exclamation-triangle me-2"></i>발견된 문제:</h6>';
+            // 시급한 이슈를 먼저 표시
+            const sortedIssues = issues.sort((a, b) => {
+                const severityRank = {'critical': 4, 'high': 3, 'medium': 2, 'low': 1};
+                const aSev = severityRank[a.severity || a.priority || 'medium'] || 2;
+                const bSev = severityRank[b.severity || b.priority || 'medium'] || 2;
+                return bSev - aSev;
+            });
+
+            if (sortedIssues.length > 0) {
+                html += '<h6 class="text-danger mb-3"><i class="fas fa-exclamation-triangle me-2"></i>발견된 문제:</h6>';
                 html += '<div class="row">';
 
-                issues.forEach(issue => {
+                sortedIssues.forEach(issue => {
                     const validationType = this.getValidationSectionTitle(issue.validation_type);
                     const validationIcon = this.getValidationSectionIcon(issue.validation_type);
+                    const issueSeverity = issue.severity || issue.priority || 'medium';
 
                     html += `
-                        <div class="col-md-6 mb-2">
-                            <div class="alert alert-danger mb-2">
-                                <small class="text-muted">${validationIcon} ${validationType}</small><br>
-                                <strong>${issue.text || issue.description || '내용 확인 필요'}</strong>
+                        <div class="col-12 mb-3">
+                            <div class="alert alert-${this.getSeverityAlertClass(issueSeverity)} mb-2">
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">${validationIcon} ${validationType}</small>
+                                    ${this.getSeverityBadge(issueSeverity)}
+                                </div>
+                                <div class="mt-2">
+                                    <strong>${issue.description || issue.text || '내용 확인 필요'}</strong>
+                                </div>
                     `;
 
+                    // 구체적인 수정 제안
+                    if (issue.suggestion) {
+                        html += `<div class="mt-2"><small class="text-success">💡 수정 제안: ${issue.suggestion}</small></div>`;
+                    }
                     if (issue.wrong_term && issue.suggested_term) {
-                        html += `<br><small>❌ ${issue.wrong_term} → ✅ ${issue.suggested_term}</small>`;
+                        html += `<div class="mt-2"><small>❌ <code>${issue.wrong_term}</code> → ✅ <code>${issue.suggested_term}</code></small></div>`;
                     }
                     if (issue.missing_languages && issue.missing_languages.length > 0) {
-                        html += `<br><small>빈 필드: ${issue.missing_languages.join(', ')}</small>`;
+                        html += `<div class="mt-2"><small>📝 빈 필드: <code>${issue.missing_languages.join(', ')}</code></small></div>`;
                     }
                     if (issue.detected_language && issue.expected_language) {
-                        html += `<br><small>${issue.detected_language} → ${issue.expected_language} 필요</small>`;
+                        html += `<div class="mt-2"><small>🌐 ${issue.detected_language} → ${issue.expected_language} 번역 필요</small></div>`;
                     }
 
                     html += '</div></div>';
@@ -2751,6 +2803,37 @@ class XLTWebInterface {
 
         html += '</div>';
         return html;
+    }
+
+    calculatePriorityCounts(groupedData) {
+        const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+        groupedData.forEach(keyData => {
+            const severity = keyData.max_severity || 'medium';
+            if (counts.hasOwnProperty(severity)) {
+                counts[severity]++;
+            }
+        });
+        return counts;
+    }
+
+    getSeverityBadge(severity) {
+        const badges = {
+            'critical': '<span class="badge bg-danger">시급</span>',
+            'high': '<span class="badge bg-warning text-dark">높음</span>',
+            'medium': '<span class="badge bg-info">보통</span>',
+            'low': '<span class="badge bg-secondary">낮음</span>'
+        };
+        return badges[severity] || badges['medium'];
+    }
+
+    getSeverityAlertClass(severity) {
+        const classes = {
+            'critical': 'danger',
+            'high': 'warning',
+            'medium': 'info',
+            'low': 'secondary'
+        };
+        return classes[severity] || 'info';
     }
 
     async startAutoCorrection() {

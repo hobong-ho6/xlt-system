@@ -5195,10 +5195,16 @@ def api_excel_validate_progress(session_id):
         }), 500
 
 def group_validation_results_by_key_id(validation_result: dict) -> dict:
-    """검증 결과를 key_id 기준으로 그룹핑"""
+    """검증 결과를 key_id 기준으로 그룹핑 - 우선순위 포함"""
     try:
         grouped_results = {}
         detailed_results = validation_result.get('detailed_results', {})
+        priority_categories = {
+            'critical': [],  # 시급한 수정 필요
+            'high': [],      # 높은 우선순위
+            'medium': [],    # 중간 우선순위
+            'low': []        # 낮은 우선순위
+        }
 
         # 각 검증 타입별로 이슈를 key_id로 그룹핑
         for validation_type, validation_data in detailed_results.items():
@@ -5208,19 +5214,26 @@ def group_validation_results_by_key_id(validation_result: dict) -> dict:
             for issue in issues:
                 key_id = issue.get('key_id', 'unknown')
                 row_number = issue.get('row_number', 0)
+                severity = issue.get('severity', 'medium')
 
                 if key_id not in grouped_results:
                     grouped_results[key_id] = {
                         'key_id': key_id,
                         'row_number': row_number,
                         'issues': [],
-                        'exceptions': []
+                        'exceptions': [],
+                        'max_severity': 'low'
                     }
 
                 # 이슈 타입별로 분류
                 issue_copy = issue.copy()
                 issue_copy['validation_type'] = validation_type
+                issue_copy['priority'] = get_issue_priority(issue_copy)
                 grouped_results[key_id]['issues'].append(issue_copy)
+
+                # 최대 심각도 업데이트
+                if severity_rank(severity) > severity_rank(grouped_results[key_id]['max_severity']):
+                    grouped_results[key_id]['max_severity'] = severity
 
             # exceptional 항목들도 처리
             for exception in exceptions:
@@ -5232,16 +5245,35 @@ def group_validation_results_by_key_id(validation_result: dict) -> dict:
                         'key_id': key_id,
                         'row_number': row_number,
                         'issues': [],
-                        'exceptions': []
+                        'exceptions': [],
+                        'max_severity': 'low'
                     }
 
                 exception_copy = exception.copy()
                 exception_copy['validation_type'] = validation_type
                 grouped_results[key_id]['exceptions'].append(exception_copy)
 
+        # 우선순위별 분류
+        for key_data in grouped_results.values():
+            severity = key_data['max_severity']
+            priority_categories[severity].append(key_data)
+
+        # 우선순위 순으로 정렬
+        sorted_results = []
+        for priority in ['critical', 'high', 'medium', 'low']:
+            # 각 우선순위 내에서 행번호 순 정렬
+            priority_categories[priority].sort(key=lambda x: x['row_number'])
+            sorted_results.extend(priority_categories[priority])
+
         return {
-            'grouped_by_key_id': list(grouped_results.values()),
-            'total_affected_keys': len(grouped_results)
+            'grouped_by_key_id': sorted_results,
+            'total_affected_keys': len(grouped_results),
+            'priority_summary': {
+                'critical': len(priority_categories['critical']),
+                'high': len(priority_categories['high']),
+                'medium': len(priority_categories['medium']),
+                'low': len(priority_categories['low'])
+            }
         }
 
     except Exception as e:
@@ -5251,6 +5283,33 @@ def group_validation_results_by_key_id(validation_result: dict) -> dict:
             'total_affected_keys': 0,
             'grouping_error': str(e)
         }
+
+def get_issue_priority(issue: dict) -> str:
+    """이슈의 우선순위 결정"""
+    issue_type = issue.get('issue_type', '')
+    severity = issue.get('severity', 'medium')
+
+    # 시급한 수정이 필요한 항목들
+    if issue_type in ['linebreak_error', 'placeholder_error']:
+        return 'critical'
+    if issue_type == 'language_mix':
+        return 'critical'
+    if severity == 'critical':
+        return 'critical'
+
+    # 높은 우선순위
+    if severity == 'high':
+        return 'high'
+    if issue_type == 'empty_cells' and 'ko_KR' in issue.get('missing_languages', []):
+        return 'high'
+
+    # 기본
+    return severity
+
+def severity_rank(severity: str) -> int:
+    """심각도 순위 (숫자가 클수록 심각)"""
+    ranks = {'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
+    return ranks.get(severity, 2)
 
 @app.route('/api/excel-validate-report/<session_id>')
 def api_excel_validate_report(session_id):

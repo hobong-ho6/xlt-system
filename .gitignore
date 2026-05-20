@@ -23,3 +23,10 @@ figma/session_*.png
 # 임시 파일들
 *.tmp
 *.temp
+
+# 백업 및 로그 디렉토리
+backups/
+logs/
+
+# macOS 시스템 파일
+.DS_Store

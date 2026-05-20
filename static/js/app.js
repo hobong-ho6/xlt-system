@@ -208,6 +208,9 @@ class XLTWebInterface {
 
         // 엑셀 합치기 이벤트 리스너들
         this.setupExcelMergeEventListeners();
+
+        // 엑셀 검증 이벤트 리스너들
+        this.setupExcelValidationEventListeners();
     }
 
     setupExcelMergeEventListeners() {
@@ -2395,6 +2398,537 @@ class XLTWebInterface {
 
         console.log('🚨 리다이렉션 에러 화면 표시 완료');
     }
+    // =============================================================================
+    // 엑셀 검증 관련 메서드들 (Claude AI 기반)
+    // =============================================================================
+
+    setupExcelValidationEventListeners() {
+        console.log('🔍 엑셀 검증 이벤트 리스너 설정 중...');
+
+        // 엑셀 검증 폼 이벤트
+        const validationForm = document.getElementById('excel-validation-form');
+        if (validationForm) {
+            validationForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.startExcelValidation();
+            });
+        }
+
+        // Claude AI 자동 교정 버튼 이벤트
+        const autoCorrectionBtn = document.getElementById('start-auto-correction');
+        if (autoCorrectionBtn) {
+            autoCorrectionBtn.addEventListener('click', () => {
+                this.startAutoCorrection();
+            });
+        }
+
+        // 교정된 엑셀 다운로드 버튼 이벤트
+        const downloadCorrectedBtn = document.getElementById('download-corrected-excel');
+        if (downloadCorrectedBtn) {
+            downloadCorrectedBtn.addEventListener('click', () => {
+                this.downloadCorrectedExcel();
+            });
+        }
+
+        console.log('✅ 엑셀 검증 이벤트 리스너 설정 완료');
+    }
+
+    async startExcelValidation() {
+        try {
+            console.log('🔍 엑셀 검증 시작');
+
+            // 파일 확인
+            const fileInput = document.getElementById('validation-file');
+            if (!fileInput.files || !fileInput.files[0]) {
+                this.showAlert('파일을 선택해주세요.', 'warning');
+                return;
+            }
+
+            const file = fileInput.files[0];
+
+            // 파일 형식 검증
+            if (!file.name.toLowerCase().match(/\.(xlsx|xls)$/)) {
+                this.showAlert('엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.', 'error');
+                return;
+            }
+
+            // UI 상태 변경
+            this.hideAllValidationSections();
+            this.showValidationProgress();
+
+            // 폼 데이터 생성
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // API 호출
+            const response = await fetch('/api/excel-validate', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                this.currentValidationSessionId = result.session_id;
+                console.log(`✅ 검증 시작됨: ${result.session_id}`);
+
+                // 진행 상태 모니터링 시작
+                this.startValidationProgressMonitoring();
+
+                this.showAlert(`엑셀 검증이 시작되었습니다: ${file.name}`, 'success');
+            } else {
+                throw new Error(result.error || '검증 시작 실패');
+            }
+
+        } catch (error) {
+            console.error('❌ 엑셀 검증 시작 오류:', error);
+            this.showAlert(`검증 시작 오류: ${error.message}`, 'error');
+            this.hideValidationProgress();
+        }
+    }
+
+    startValidationProgressMonitoring() {
+        if (!this.currentValidationSessionId) return;
+
+        console.log('📊 검증 진행 상태 모니터링 시작');
+
+        // 기존 타이머 정리
+        if (this.validationProgressTimer) {
+            clearInterval(this.validationProgressTimer);
+        }
+
+        // 진행 상태 확인 (2초마다)
+        this.validationProgressTimer = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/excel-validate-progress/${this.currentValidationSessionId}`);
+                const result = await response.json();
+
+                if (result.status === 'completed') {
+                    clearInterval(this.validationProgressTimer);
+                    this.hideValidationProgress();
+                    this.showValidationResults(result.result);
+                } else if (result.status === 'error') {
+                    clearInterval(this.validationProgressTimer);
+                    this.hideValidationProgress();
+                    this.showAlert(`검증 오류: ${result.error || '알 수 없는 오류'}`, 'error');
+                }
+
+                // 진행률 업데이트 (현재는 단순 애니메이션)
+                this.updateValidationProgress();
+
+            } catch (error) {
+                console.error('❌ 검증 진행 상태 확인 오류:', error);
+            }
+        }, 2000);
+    }
+
+    showValidationResults(validationResult) {
+        try {
+            console.log('📋 검증 결과 표시:', validationResult);
+
+            const resultsSection = document.getElementById('validation-results');
+            const summaryDiv = document.getElementById('validation-summary');
+            const detailsDiv = document.getElementById('validation-details');
+            const correctionSection = document.getElementById('auto-correction-section');
+
+            if (!resultsSection || !summaryDiv || !detailsDiv) {
+                console.error('❌ 검증 결과 UI 요소를 찾을 수 없음');
+                return;
+            }
+
+            // 요약 정보 생성
+            const summary = validationResult.validation_summary || {};
+            const totalIssues = summary.total_issues || 0;
+
+            summaryDiv.innerHTML = `
+                <div class="row text-center">
+                    <div class="col-md-2">
+                        <div class="card border-primary">
+                            <div class="card-body">
+                                <h5 class="text-primary">${validationResult.total_rows || 0}</h5>
+                                <small>전체 행</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card border-${totalIssues > 0 ? 'danger' : 'success'}">
+                            <div class="card-body">
+                                <h5 class="text-${totalIssues > 0 ? 'danger' : 'success'}">${totalIssues}</h5>
+                                <small>총 문제</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card border-warning">
+                            <div class="card-body">
+                                <h5 class="text-warning">${summary.spelling_errors || 0}</h5>
+                                <small>맞춤법</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card border-info">
+                            <div class="card-body">
+                                <h5 class="text-info">${summary.terminology_errors || 0}</h5>
+                                <small>용어집</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card border-secondary">
+                            <div class="card-body">
+                                <h5 class="text-secondary">${summary.language_mismatches || 0}</h5>
+                                <small>언어불일치</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card border-dark">
+                            <div class="card-body">
+                                <h5 class="text-dark">${summary.completeness_issues || 0}</h5>
+                                <small>빈필드</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // 상세 결과 생성
+            const detailedResults = validationResult.detailed_results || {};
+            let detailsHtml = '';
+
+            // 각 검증 결과별 상세 정보
+            Object.entries(detailedResults).forEach(([key, data]) => {
+                const issues = data.issues || [];
+                if (issues.length > 0) {
+                    const sectionTitle = this.getValidationSectionTitle(key);
+                    const sectionIcon = this.getValidationSectionIcon(key);
+
+                    detailsHtml += `
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${key}">
+                                    ${sectionIcon} ${sectionTitle} (${issues.length}개)
+                                </button>
+                            </h2>
+                            <div id="${key}" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    ${this.generateIssuesList(issues, key)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            if (detailsHtml) {
+                detailsDiv.innerHTML = `
+                    <h6>검증 상세 결과:</h6>
+                    <div class="accordion">${detailsHtml}</div>
+                `;
+            } else {
+                detailsDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check me-2"></i>모든 검증을 통과했습니다!</div>';
+            }
+
+            // 자동 교정 섹션 표시/숨김
+            if (validationResult.has_issues && totalIssues > 0) {
+                correctionSection.style.display = 'block';
+            } else {
+                correctionSection.style.display = 'none';
+            }
+
+            // 결과 섹션 표시
+            resultsSection.style.display = 'block';
+
+        } catch (error) {
+            console.error('❌ 검증 결과 표시 오류:', error);
+            this.showAlert('검증 결과 표시 중 오류가 발생했습니다.', 'error');
+        }
+    }
+
+    async startAutoCorrection() {
+        try {
+            if (!this.currentValidationSessionId) {
+                this.showAlert('검증 세션을 찾을 수 없습니다.', 'error');
+                return;
+            }
+
+            console.log('🔧 Claude AI 자동 교정 시작');
+
+            // UI 상태 변경
+            const correctionSection = document.getElementById('auto-correction-section');
+            if (correctionSection) correctionSection.style.display = 'none';
+
+            this.showCorrectionProgress();
+
+            // API 호출
+            const response = await fetch(`/api/excel-auto-correct/${this.currentValidationSessionId}`, {
+                method: 'POST'
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                this.currentCorrectionSessionId = result.correction_session_id;
+                console.log(`✅ 교정 시작됨: ${result.correction_session_id}`);
+
+                // 교정 진행 상태 모니터링 시작
+                this.startCorrectionProgressMonitoring();
+
+                this.showAlert('Claude AI 자동 교정이 시작되었습니다.', 'success');
+            } else {
+                throw new Error(result.error || '교정 시작 실패');
+            }
+
+        } catch (error) {
+            console.error('❌ 자동 교정 시작 오류:', error);
+            this.showAlert(`교정 시작 오류: ${error.message}`, 'error');
+            this.hideCorrectionProgress();
+        }
+    }
+
+    startCorrectionProgressMonitoring() {
+        if (!this.currentCorrectionSessionId) return;
+
+        console.log('🔧 교정 진행 상태 모니터링 시작');
+
+        // 기존 타이머 정리
+        if (this.correctionProgressTimer) {
+            clearInterval(this.correctionProgressTimer);
+        }
+
+        // 진행 상태 확인 (3초마다)
+        this.correctionProgressTimer = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/excel-correction-progress/${this.currentCorrectionSessionId}`);
+                const result = await response.json();
+
+                if (result.status === 'completed') {
+                    clearInterval(this.correctionProgressTimer);
+                    this.hideCorrectionProgress();
+                    this.showCorrectionResults(result.result);
+                } else if (result.status === 'error') {
+                    clearInterval(this.correctionProgressTimer);
+                    this.hideCorrectionProgress();
+                    this.showAlert(`교정 오류: ${result.error || '알 수 없는 오류'}`, 'error');
+                }
+
+                // 세부 진행률 업데이트
+                const progress = result.progress || {};
+                this.updateCorrectionProgress(progress);
+
+            } catch (error) {
+                console.error('❌ 교정 진행 상태 확인 오류:', error);
+            }
+        }, 3000);
+    }
+
+    showCorrectionResults(correctionResult) {
+        try {
+            console.log('🎉 교정 결과 표시:', correctionResult);
+
+            const resultsSection = document.getElementById('correction-results');
+            const summaryDiv = document.getElementById('correction-summary');
+
+            if (!resultsSection || !summaryDiv) {
+                console.error('❌ 교정 결과 UI 요소를 찾을 수 없음');
+                return;
+            }
+
+            // 교정 요약 정보 생성
+            const summary = correctionResult.correction_summary || {};
+            const processingTime = correctionResult.processing_time || 0;
+
+            summaryDiv.innerHTML = `
+                <div class="row text-center mb-4">
+                    <div class="col-md-3">
+                        <div class="card border-info">
+                            <div class="card-body">
+                                <h5 class="text-info">${summary.total_items_processed || 0}</h5>
+                                <small>처리 항목</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-success">
+                            <div class="card-body">
+                                <h5 class="text-success">${summary.successfully_corrected || 0}</h5>
+                                <small>교정 완료</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-warning">
+                            <div class="card-body">
+                                <h5 class="text-warning">${Math.round((summary.improvement_rate || 0) * 100)}%</h5>
+                                <small>개선율</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-secondary">
+                            <div class="card-body">
+                                <h5 class="text-secondary">${processingTime.toFixed(1)}초</h5>
+                                <small>처리 시간</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Claude AI가 <strong>${summary.successfully_corrected || 0}개</strong> 항목을 성공적으로 교정했습니다!
+                </div>
+            `;
+
+            // 교정 완료 섹션 표시
+            resultsSection.style.display = 'block';
+
+        } catch (error) {
+            console.error('❌ 교정 결과 표시 오류:', error);
+            this.showAlert('교정 결과 표시 중 오류가 발생했습니다.', 'error');
+        }
+    }
+
+    async downloadCorrectedExcel() {
+        try {
+            if (!this.currentCorrectionSessionId) {
+                this.showAlert('교정 세션을 찾을 수 없습니다.', 'error');
+                return;
+            }
+
+            console.log('📥 교정된 엑셀 파일 다운로드 시작');
+
+            // 다운로드 링크로 리다이렉트
+            window.location.href = `/api/download-corrected-excel/${this.currentCorrectionSessionId}`;
+
+        } catch (error) {
+            console.error('❌ 교정된 엑셀 다운로드 오류:', error);
+            this.showAlert(`다운로드 오류: ${error.message}`, 'error');
+        }
+    }
+
+    // UI 헬퍼 메서드들
+    hideAllValidationSections() {
+        const sections = ['validation-progress', 'validation-results', 'correction-progress', 'correction-results'];
+        sections.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.style.display = 'none';
+        });
+    }
+
+    showValidationProgress() {
+        const element = document.getElementById('validation-progress');
+        if (element) element.style.display = 'block';
+    }
+
+    hideValidationProgress() {
+        const element = document.getElementById('validation-progress');
+        if (element) element.style.display = 'none';
+    }
+
+    updateValidationProgress() {
+        // 간단한 애니메이션 (실제 진행률 정보가 없으므로)
+        const progressBar = document.querySelector('#validation-progress .progress-bar');
+        if (progressBar) {
+            const currentWidth = parseInt(progressBar.style.width) || 0;
+            const newWidth = Math.min(currentWidth + 10, 90);
+            progressBar.style.width = `${newWidth}%`;
+        }
+    }
+
+    showCorrectionProgress() {
+        const element = document.getElementById('correction-progress');
+        if (element) element.style.display = 'block';
+    }
+
+    hideCorrectionProgress() {
+        const element = document.getElementById('correction-progress');
+        if (element) element.style.display = 'none';
+    }
+
+    updateCorrectionProgress(progressData) {
+        const progressBar = document.getElementById('correction-progress-bar');
+        const statusText = document.getElementById('correction-status-text');
+        const progressText = document.getElementById('correction-progress-text');
+
+        if (progressData.progress !== undefined && progressBar) {
+            progressBar.style.width = `${progressData.progress}%`;
+        }
+
+        if (progressData.current_step && statusText) {
+            statusText.textContent = progressData.current_step;
+        }
+
+        if (progressData.progress !== undefined && progressText) {
+            progressText.textContent = `${progressData.progress}%`;
+        }
+    }
+
+    getValidationSectionTitle(key) {
+        const titles = {
+            'spelling_validation': '맞춤법/띄어쓰기 오류',
+            'terminology_validation': '용어집 불일치',
+            'language_validation': '언어 불일치',
+            'multilingual_validation': '다국어 용어 오류',
+            'completeness_validation': '데이터 완성도'
+        };
+        return titles[key] || key;
+    }
+
+    getValidationSectionIcon(key) {
+        const icons = {
+            'spelling_validation': '<i class="fas fa-spell-check text-warning"></i>',
+            'terminology_validation': '<i class="fas fa-book text-info"></i>',
+            'language_validation': '<i class="fas fa-language text-secondary"></i>',
+            'multilingual_validation': '<i class="fas fa-globe text-primary"></i>',
+            'completeness_validation': '<i class="fas fa-exclamation-triangle text-dark"></i>'
+        };
+        return icons[key] || '<i class="fas fa-question-circle"></i>';
+    }
+
+    generateIssuesList(issues, sectionKey) {
+        if (!Array.isArray(issues) || issues.length === 0) {
+            return '<div class="text-muted">문제가 없습니다.</div>';
+        }
+
+        let html = '<div class="list-group">';
+
+        issues.slice(0, 10).forEach((issue, index) => { // 최대 10개까지만 표시
+            let issueHtml = '<div class="list-group-item">';
+
+            switch (sectionKey) {
+                case 'spelling_validation':
+                    issueHtml += `
+                        <strong>텍스트:</strong> ${issue.text || 'N/A'}<br>
+                        <strong>오류 유형:</strong> ${issue.error_type || 'N/A'}<br>
+                        <strong>문제:</strong> ${issue.error || 'N/A'}<br>
+                        <strong>제안:</strong> <span class="text-success">${issue.suggestion || 'N/A'}</span>
+                    `;
+                    break;
+                case 'terminology_validation':
+                    issueHtml += `
+                        <strong>텍스트:</strong> ${issue.text || 'N/A'}<br>
+                        <strong>잘못된 용어:</strong> <span class="text-danger">${issue.wrong_term || 'N/A'}</span><br>
+                        <strong>올바른 용어:</strong> <span class="text-success">${issue.suggested_term || 'N/A'}</span><br>
+                        <strong>이유:</strong> ${issue.reason || 'N/A'}
+                    `;
+                    break;
+                default:
+                    issueHtml += `<pre>${JSON.stringify(issue, null, 2)}</pre>`;
+            }
+
+            issueHtml += '</div>';
+            html += issueHtml;
+        });
+
+        if (issues.length > 10) {
+            html += `<div class="list-group-item text-muted text-center">... 그 외 ${issues.length - 10}개 항목</div>`;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
 }
 
 // 페이지 로드 시 초기화

@@ -100,6 +100,11 @@
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="validate-tab" data-bs-toggle="pill" data-bs-target="#validate-panel" type="button" role="tab" aria-controls="validate-panel" aria-selected="false">
+                                <i class="fas fa-check-circle me-2"></i>엑셀 검증
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
                             <button class="nav-link" id="merge-tab" data-bs-toggle="pill" data-bs-target="#merge-panel" type="button" role="tab" aria-controls="merge-panel" aria-selected="false">
                                 <i class="fas fa-compress-arrows-alt me-2"></i>엑셀 합치기
                             </button>
@@ -257,6 +262,156 @@
                                             </div>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 엑셀 검증 탭 -->
+                        <div class="tab-pane fade" id="validate-panel" role="tabpanel" aria-labelledby="validate-tab">
+                            <div class="card shadow">
+                                <div class="card-header bg-light">
+                                    <h3 class="card-title mb-0">
+                                        <i class="fas fa-check-circle me-2"></i>
+                                        Claude AI 엑셀 검증
+                                    </h3>
+                                </div>
+                                <div class="card-body">
+                                    <!-- 설명 섹션 -->
+                                    <div class="mb-4">
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-robot me-2"></i>
+                                            <strong>Claude AI 엑셀 검증:</strong> 번역된 엑셀 파일의 품질을 Claude AI로 종합 검증합니다.
+                                            <br><small class="text-muted mt-1 d-block">
+                                                • 한글 맞춤법/띄어쓰기 검증 • 용어집 일관성 체크 • 언어 일치성 확인<br>
+                                                • 다국어 번역 품질 검증 • 빈 필드 및 데이터 완성도 점검<br>
+                                                • 문제 발견 시 Claude AI 자동 교정 기능 제공
+                                            </small>
+                                        </div>
+                                    </div>
+
+                                    <!-- 파일 업로드 섹션 -->
+                                    <div class="mb-4">
+                                        <div class="card border-primary">
+                                            <div class="card-header bg-primary text-white">
+                                                <h5 class="card-title mb-0">
+                                                    <i class="fas fa-upload me-2"></i>1단계: 엑셀 파일 업로드
+                                                </h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <form id="excel-validation-form" enctype="multipart/form-data">
+                                                    <div class="mb-3">
+                                                        <label for="validation-file" class="form-label">검증할 엑셀 파일</label>
+                                                        <input type="file" class="form-control" id="validation-file" accept=".xlsx,.xls" required>
+                                                        <div class="form-text">
+                                                            sampleformat.xlsx와 동일한 형식의 엑셀 파일을 업로드해주세요.
+                                                        </div>
+                                                    </div>
+                                                    <button type="submit" class="btn btn-primary">
+                                                        <i class="fas fa-search me-2"></i>검증 시작
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 검증 진행 상태 -->
+                                    <div id="validation-progress" class="mb-4" style="display: none;">
+                                        <div class="card border-info">
+                                            <div class="card-header bg-info text-white">
+                                                <h5 class="card-title mb-0">
+                                                    <i class="fas fa-cog fa-spin me-2"></i>2단계: Claude AI 검증 중
+                                                </h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="progress mb-3">
+                                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                                </div>
+                                                <div class="d-flex justify-content-between">
+                                                    <small class="text-muted">검증 진행 중...</small>
+                                                    <small id="validation-progress-text" class="text-muted">0%</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 검증 결과 -->
+                                    <div id="validation-results" class="mb-4" style="display: none;">
+                                        <div class="card border-success">
+                                            <div class="card-header bg-success text-white">
+                                                <h5 class="card-title mb-0">
+                                                    <i class="fas fa-clipboard-check me-2"></i>3단계: 검증 결과
+                                                </h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <!-- 검증 요약 -->
+                                                <div id="validation-summary" class="mb-4">
+                                                    <!-- 동적으로 생성됨 -->
+                                                </div>
+
+                                                <!-- 상세 결과 -->
+                                                <div id="validation-details">
+                                                    <!-- 동적으로 생성됨 -->
+                                                </div>
+
+                                                <!-- Claude AI 자동 교정 버튼 -->
+                                                <div id="auto-correction-section" style="display: none;">
+                                                    <hr>
+                                                    <div class="alert alert-warning">
+                                                        <i class="fas fa-exclamation-triangle me-2"></i>
+                                                        <strong>문제가 발견되었습니다!</strong> Claude AI로 자동 교정을 실행하시겠습니까?
+                                                    </div>
+                                                    <button id="start-auto-correction" class="btn btn-warning">
+                                                        <i class="fas fa-magic me-2"></i>Claude AI 자동 교정 시작
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 교정 진행 상태 -->
+                                    <div id="correction-progress" class="mb-4" style="display: none;">
+                                        <div class="card border-warning">
+                                            <div class="card-header bg-warning text-dark">
+                                                <h5 class="card-title mb-0">
+                                                    <i class="fas fa-magic me-2"></i>4단계: Claude AI 자동 교정 중
+                                                </h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="progress mb-3">
+                                                    <div id="correction-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning" role="progressbar" style="width: 0%"></div>
+                                                </div>
+                                                <div class="d-flex justify-content-between">
+                                                    <small id="correction-status-text" class="text-muted">교정 준비 중...</small>
+                                                    <small id="correction-progress-text" class="text-muted">0%</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 교정 완료 -->
+                                    <div id="correction-results" class="mb-4" style="display: none;">
+                                        <div class="card border-success">
+                                            <div class="card-header bg-success text-white">
+                                                <h5 class="card-title mb-0">
+                                                    <i class="fas fa-check me-2"></i>5단계: 교정 완료
+                                                </h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <!-- 교정 요약 -->
+                                                <div id="correction-summary" class="mb-4">
+                                                    <!-- 동적으로 생성됨 -->
+                                                </div>
+
+                                                <!-- 다운로드 버튼 -->
+                                                <div class="d-grid">
+                                                    <button id="download-corrected-excel" class="btn btn-success btn-lg">
+                                                        <i class="fas fa-download me-2"></i>교정된 엑셀 파일 다운로드
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                 </div>
                             </div>
                         </div>

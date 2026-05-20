@@ -767,16 +767,16 @@ create_independent_shortcut() {
     cat > "$HOME/Desktop/XLT System (Tray).command" << 'EOF'
 #!/bin/bash
 
-# XLT System v3.1 터미널 독립 실행 스크립트
+# XLT System v5.1.12 터미널 독립 실행 스크립트
 # 터미널 종료 후에도 백그라운드에서 계속 실행
 
 INSTALL_DIR="INSTALL_DIR_PLACEHOLDER"
 
-echo "🚀 XLT System v3.1 시작 중..."
+echo "🚀 XLT System v5.1.12 시작 중..."
 echo ""
 
 # 1. 이미 실행 중인지 확인
-if pgrep -f "python.*xlt_tray.py" > /dev/null 2>&1; then
+if pgrep -f "xlt_tray.py" > /dev/null 2>&1; then
     echo "⚠️ XLT 트레이 앱이 이미 실행 중입니다."
     echo "🔍 시스템 트레이에서 XLT 아이콘을 확인해주세요."
     sleep 3
@@ -820,7 +820,7 @@ if [ -f "xlt_tray.py" ]; then
 
     # 트레이 앱 실행 확인 (프로세스 + 포트)
     sleep 2
-    if pgrep -f "python.*xlt_tray.py" >/dev/null 2>&1 && lsof -i :5004 >/dev/null 2>&1; then
+    if pgrep -f "xlt_tray.py" >/dev/null 2>&1 && lsof -i :5004 >/dev/null 2>&1; then
         echo "✅ 트레이 앱이 시작되었습니다!"
         START_MODE="tray"
         SERVER_RUNNING=true

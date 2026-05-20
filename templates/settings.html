@@ -1482,6 +1482,386 @@
         });
     </script>
 
+    <!-- 프롬프트 편집 섹션 -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header bg-info text-white">
+                    <h3 class="card-title mb-0">
+                        <i class="fas fa-edit me-2"></i>
+                        Claude 프롬프트 편집
+                    </h3>
+                    <small class="text-light">각 기능별 Claude AI 프롬프트를 사용자 정의할 수 있습니다</small>
+                </div>
+                <div class="card-body">
+                    <!-- 프롬프트 로딩 상태 -->
+                    <div id="prompts-loading" class="text-center">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-muted">프롬프트 정보를 로드하는 중...</p>
+                    </div>
+
+                    <!-- 프롬프트 목록 -->
+                    <div id="prompts-container" style="display: none;">
+                        <!-- 카테고리 탭 -->
+                        <ul class="nav nav-tabs mb-3" id="prompt-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="translation-prompts-tab" data-bs-toggle="tab" data-bs-target="#translation-prompts" type="button" role="tab">
+                                    <i class="fas fa-language me-1"></i>번역 프롬프트
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="validation-prompts-tab" data-bs-toggle="tab" data-bs-target="#validation-prompts" type="button" role="tab">
+                                    <i class="fas fa-check-circle me-1"></i>검증 프롬프트
+                                </button>
+                            </li>
+                        </ul>
+
+                        <!-- 탭 콘텐츠 -->
+                        <div class="tab-content" id="prompt-tab-content">
+                            <!-- 번역 프롬프트 탭 -->
+                            <div class="tab-pane fade show active" id="translation-prompts" role="tabpanel">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <div class="card border-primary">
+                                            <div class="card-header bg-primary text-white">
+                                                <h5 class="mb-0">피그마 번역 프롬프트</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">설명</label>
+                                                    <p class="text-muted small" id="figma-translation-description">로딩 중...</p>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label for="figma-translation-prompt" class="form-label">프롬프트 내용</label>
+                                                    <textarea class="form-control font-monospace" id="figma-translation-prompt" rows="10"></textarea>
+                                                    <div class="form-text">
+                                                        변수: {source_text}, {target_languages}
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    <button type="button" class="btn btn-success" onclick="savePrompt('figma_translation')">
+                                                        <i class="fas fa-save me-1"></i>저장
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-secondary" onclick="resetPrompt('figma_translation')">
+                                                        <i class="fas fa-undo me-1"></i>기본값으로 리셋
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <div class="card border-success">
+                                            <div class="card-header bg-success text-white">
+                                                <h5 class="mb-0">엑셀 번역 프롬프트</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">설명</label>
+                                                    <p class="text-muted small" id="excel-translation-description">로딩 중...</p>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label for="excel-translation-prompt" class="form-label">프롬프트 내용</label>
+                                                    <textarea class="form-control font-monospace" id="excel-translation-prompt" rows="10"></textarea>
+                                                    <div class="form-text">
+                                                        변수: {text_list}, {target_languages}
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    <button type="button" class="btn btn-success" onclick="savePrompt('excel_translation')">
+                                                        <i class="fas fa-save me-1"></i>저장
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-secondary" onclick="resetPrompt('excel_translation')">
+                                                        <i class="fas fa-undo me-1"></i>기본값으로 리셋
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 검증 프롬프트 탭 -->
+                            <div class="tab-pane fade" id="validation-prompts" role="tabpanel">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <div class="card border-warning">
+                                            <div class="card-header bg-warning text-dark">
+                                                <h5 class="mb-0">맞춤법 검증 프롬프트</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">설명</label>
+                                                    <p class="text-muted small" id="excel-validation-spelling-description">로딩 중...</p>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label for="excel-validation-spelling-prompt" class="form-label">프롬프트 내용</label>
+                                                    <textarea class="form-control font-monospace" id="excel-validation-spelling-prompt" rows="8"></textarea>
+                                                    <div class="form-text">
+                                                        변수: {text_list}
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    <button type="button" class="btn btn-success" onclick="savePrompt('excel_validation_spelling')">
+                                                        <i class="fas fa-save me-1"></i>저장
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-secondary" onclick="resetPrompt('excel_validation_spelling')">
+                                                        <i class="fas fa-undo me-1"></i>기본값으로 리셋
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <div class="card border-info">
+                                            <div class="card-header bg-info text-white">
+                                                <h5 class="mb-0">용어집 검증 프롬프트</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">설명</label>
+                                                    <p class="text-muted small" id="excel-validation-terminology-description">로딩 중...</p>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label for="excel-validation-terminology-prompt" class="form-label">프롬프트 내용</label>
+                                                    <textarea class="form-control font-monospace" id="excel-validation-terminology-prompt" rows="8"></textarea>
+                                                    <div class="form-text">
+                                                        변수: {text_list}, {terminology_data}
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    <button type="button" class="btn btn-success" onclick="savePrompt('excel_validation_terminology')">
+                                                        <i class="fas fa-save me-1"></i>저장
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-secondary" onclick="resetPrompt('excel_validation_terminology')">
+                                                        <i class="fas fa-undo me-1"></i>기본값으로 리셋
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <div class="card border-danger">
+                                            <div class="card-header bg-danger text-white">
+                                                <h5 class="mb-0">자동 교정 프롬프트</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">설명</label>
+                                                    <p class="text-muted small" id="excel-auto-correction-description">로딩 중...</p>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label for="excel-auto-correction-prompt" class="form-label">프롬프트 내용</label>
+                                                    <textarea class="form-control font-monospace" id="excel-auto-correction-prompt" rows="8"></textarea>
+                                                    <div class="form-text">
+                                                        변수: {korean_text}, {target_languages}, {terminology_context}
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    <button type="button" class="btn btn-success" onclick="savePrompt('excel_auto_correction')">
+                                                        <i class="fas fa-save me-1"></i>저장
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-secondary" onclick="resetPrompt('excel_auto_correction')">
+                                                        <i class="fas fa-undo me-1"></i>기본값으로 리셋
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 전체 리셋 버튼 -->
+                                <div class="row mt-4">
+                                    <div class="col-12 text-center">
+                                        <button type="button" class="btn btn-outline-danger" onclick="resetAllPrompts()">
+                                            <i class="fas fa-exclamation-triangle me-1"></i>모든 프롬프트를 기본값으로 리셋
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 오류 메시지 -->
+                    <div id="prompts-error" class="alert alert-danger" style="display: none;">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <span id="prompts-error-message">프롬프트 로드 실패</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 프롬프트 편집 JavaScript -->
+    <script>
+        class PromptManager {
+            constructor() {
+                this.prompts = {};
+                this.loadPrompts();
+            }
+
+            async loadPrompts() {
+                try {
+                    const response = await fetch('/api/settings/prompts');
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        this.prompts = data.prompts;
+                        this.displayPrompts();
+                    } else {
+                        throw new Error(data.error || '프롬프트 로드 실패');
+                    }
+                } catch (error) {
+                    console.error('❌ 프롬프트 로드 오류:', error);
+                    this.showError(error.message);
+                }
+            }
+
+            displayPrompts() {
+                const container = document.getElementById('prompts-container');
+                const loading = document.getElementById('prompts-loading');
+
+                // 각 프롬프트 표시
+                Object.entries(this.prompts).forEach(([key, data]) => {
+                    const descElement = document.getElementById(`${key.replace(/_/g, '-')}-description`);
+                    const promptElement = document.getElementById(`${key.replace(/_/g, '-')}-prompt`);
+
+                    if (descElement && promptElement) {
+                        descElement.textContent = data.description || '설명 없음';
+                        promptElement.value = data.prompt || '';
+                    }
+                });
+
+                loading.style.display = 'none';
+                container.style.display = 'block';
+            }
+
+            showError(message) {
+                const loading = document.getElementById('prompts-loading');
+                const error = document.getElementById('prompts-error');
+                const errorMessage = document.getElementById('prompts-error-message');
+
+                loading.style.display = 'none';
+                errorMessage.textContent = message;
+                error.style.display = 'block';
+            }
+
+            async savePrompt(promptType) {
+                try {
+                    const promptElement = document.getElementById(`${promptType.replace(/_/g, '-')}-prompt`);
+                    const newPrompt = promptElement.value;
+
+                    if (!newPrompt.trim()) {
+                        alert('프롬프트 내용이 비어있습니다.');
+                        return;
+                    }
+
+                    const response = await fetch(`/api/settings/prompts/${promptType}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            prompt: newPrompt,
+                            name: this.prompts[promptType]?.name || '',
+                            description: this.prompts[promptType]?.description || ''
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        alert('✅ 프롬프트가 성공적으로 저장되었습니다.');
+                        this.prompts[promptType].prompt = newPrompt;
+                    } else {
+                        throw new Error(data.error || '프롬프트 저장 실패');
+                    }
+
+                } catch (error) {
+                    console.error('❌ 프롬프트 저장 오류:', error);
+                    alert(`❌ 프롬프트 저장 실패: ${error.message}`);
+                }
+            }
+
+            async resetPrompt(promptType) {
+                if (!confirm(`${promptType} 프롬프트를 기본값으로 리셋하시겠습니까?`)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/settings/prompts/${promptType}/reset`, {
+                        method: 'POST'
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        alert('✅ 프롬프트가 기본값으로 리셋되었습니다.');
+                        this.loadPrompts(); // 다시 로드
+                    } else {
+                        throw new Error(data.error || '프롬프트 리셋 실패');
+                    }
+
+                } catch (error) {
+                    console.error('❌ 프롬프트 리셋 오류:', error);
+                    alert(`❌ 프롬프트 리셋 실패: ${error.message}`);
+                }
+            }
+
+            async resetAllPrompts() {
+                if (!confirm('⚠️ 모든 프롬프트를 기본값으로 리셋하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/settings/prompts/reset-all', {
+                        method: 'POST'
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        alert('✅ 모든 프롬프트가 기본값으로 리셋되었습니다.');
+                        this.loadPrompts(); // 다시 로드
+                    } else {
+                        throw new Error(data.error || '전체 리셋 실패');
+                    }
+
+                } catch (error) {
+                    console.error('❌ 전체 리셋 오류:', error);
+                    alert(`❌ 전체 리셋 실패: ${error.message}`);
+                }
+            }
+        }
+
+        // 전역 함수들 (HTML에서 호출)
+        let promptManager = null;
+
+        function savePrompt(promptType) {
+            if (promptManager) {
+                promptManager.savePrompt(promptType);
+            }
+        }
+
+        function resetPrompt(promptType) {
+            if (promptManager) {
+                promptManager.resetPrompt(promptType);
+            }
+        }
+
+        function resetAllPrompts() {
+            if (promptManager) {
+                promptManager.resetAllPrompts();
+            }
+        }
+
+        // 페이지 로드 시 프롬프트 매니저 초기화
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                promptManager = new PromptManager();
+            }, 1000); // 기존 SettingsManager 초기화 후 실행
+        });
+    </script>
+
     <!-- Claude 계정 전환 모달 -->
     <div class="modal fade" id="claudeAccountModal" tabindex="-1" aria-labelledby="claudeAccountModalLabel" aria-hidden="true">
         <div class="modal-dialog">

@@ -1558,6 +1558,159 @@ def api_browse_directory():
             'error': f'디렉토리 탐색 실패: {str(e)}'
         }), 500
 
+# =============================================================================
+# Claude 프롬프트 관리 API
+# =============================================================================
+
+@app.route('/api/settings/prompts', methods=['GET'])
+def api_get_prompts():
+    """모든 Claude 프롬프트 정보 조회"""
+    try:
+        from xlt.core.prompt_manager import get_prompt_manager
+
+        prompt_manager = get_prompt_manager()
+        prompt_info = prompt_manager.get_prompt_info()
+
+        return jsonify({
+            'status': 'success',
+            'prompts': prompt_info
+        })
+
+    except Exception as e:
+        logger.error(f"❌ 프롬프트 조회 오류: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': f'프롬프트 조회 실패: {str(e)}'
+        }), 500
+
+@app.route('/api/settings/prompts/<prompt_type>', methods=['GET'])
+def api_get_prompt(prompt_type):
+    """특정 프롬프트 조회"""
+    try:
+        from xlt.core.prompt_manager import get_prompt_manager
+
+        prompt_manager = get_prompt_manager()
+        prompt_content = prompt_manager.get_prompt(prompt_type)
+
+        if prompt_content is None:
+            return jsonify({
+                'status': 'error',
+                'error': '존재하지 않는 프롬프트입니다.'
+            }), 404
+
+        return jsonify({
+            'status': 'success',
+            'prompt': prompt_content
+        })
+
+    except Exception as e:
+        logger.error(f"❌ 프롬프트 조회 오류 ({prompt_type}): {e}")
+        return jsonify({
+            'status': 'error',
+            'error': f'프롬프트 조회 실패: {str(e)}'
+        }), 500
+
+@app.route('/api/settings/prompts/<prompt_type>', methods=['POST'])
+def api_update_prompt(prompt_type):
+    """특정 프롬프트 업데이트"""
+    try:
+        from xlt.core.prompt_manager import get_prompt_manager
+
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'status': 'error',
+                'error': '요청 데이터가 없습니다.'
+            }), 400
+
+        new_prompt = data.get('prompt', '')
+        name = data.get('name', '')
+        description = data.get('description', '')
+
+        if not new_prompt.strip():
+            return jsonify({
+                'status': 'error',
+                'error': '프롬프트 내용이 비어있습니다.'
+            }), 400
+
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.update_prompt(prompt_type, new_prompt, name, description)
+
+        if success:
+            logger.info(f"✅ 프롬프트 업데이트 완료: {prompt_type}")
+            return jsonify({
+                'status': 'success',
+                'message': f'{name or prompt_type} 프롬프트가 업데이트되었습니다.'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': '프롬프트 업데이트에 실패했습니다.'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"❌ 프롬프트 업데이트 오류 ({prompt_type}): {e}")
+        return jsonify({
+            'status': 'error',
+            'error': f'프롬프트 업데이트 실패: {str(e)}'
+        }), 500
+
+@app.route('/api/settings/prompts/<prompt_type>/reset', methods=['POST'])
+def api_reset_prompt(prompt_type):
+    """특정 프롬프트를 기본값으로 리셋"""
+    try:
+        from xlt.core.prompt_manager import get_prompt_manager
+
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.reset_to_default(prompt_type)
+
+        if success:
+            logger.info(f"✅ 프롬프트 리셋 완료: {prompt_type}")
+            return jsonify({
+                'status': 'success',
+                'message': f'{prompt_type} 프롬프트가 기본값으로 리셋되었습니다.'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': '프롬프트 리셋에 실패했습니다.'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"❌ 프롬프트 리셋 오류 ({prompt_type}): {e}")
+        return jsonify({
+            'status': 'error',
+            'error': f'프롬프트 리셋 실패: {str(e)}'
+        }), 500
+
+@app.route('/api/settings/prompts/reset-all', methods=['POST'])
+def api_reset_all_prompts():
+    """모든 프롬프트를 기본값으로 리셋"""
+    try:
+        from xlt.core.prompt_manager import get_prompt_manager
+
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.reset_to_default()
+
+        if success:
+            logger.info("✅ 모든 프롬프트 리셋 완료")
+            return jsonify({
+                'status': 'success',
+                'message': '모든 프롬프트가 기본값으로 리셋되었습니다.'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': '프롬프트 리셋에 실패했습니다.'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"❌ 모든 프롬프트 리셋 오류: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': f'프롬프트 리셋 실패: {str(e)}'
+        }), 500
+
 def apply_log_settings_immediately(log_settings):
     """로그 설정을 서버 재시작 없이 즉시 적용"""
     try:
@@ -4913,6 +5066,365 @@ def api_excel_progress(session_id):
             'status': 'error',
             'error': f'진행 상태 조회 중 오류: {str(e)}'
         }), 500
+
+# =============================================================================
+# 엑셀 검증 관련 라우트들 (Claude AI 기반)
+# =============================================================================
+
+@app.route('/api/excel-validate', methods=['POST'])
+def api_excel_validate():
+    """엑셀 파일 업로드 및 Claude AI 검증 시작"""
+    try:
+        logger.info("📊 엑셀 검증 요청 수신")
+
+        # 파일 업로드 확인
+        if 'file' not in request.files:
+            return jsonify({'status': 'error', 'error': '파일이 업로드되지 않았습니다.'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'status': 'error', 'error': '파일이 선택되지 않았습니다.'}), 400
+
+        # 엑셀 파일 확인
+        if not file.filename.lower().endswith(('.xlsx', '.xls')):
+            return jsonify({'status': 'error', 'error': '엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.'}), 400
+
+        # 임시 파일로 저장
+        import tempfile
+        from werkzeug.utils import secure_filename
+
+        filename = secure_filename(file.filename)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            file.save(tmp_file.name)
+            temp_file_path = tmp_file.name
+
+        # 세션 ID 생성
+        session_id = f"validate_{int(time.time())}"
+
+        # 검증 모듈 import 및 실행
+        from xlt.validation.excel_validator import ExcelValidator
+        from xlt.core.config import XLTConfig
+
+        config = XLTConfig()
+        validator = ExcelValidator(config)
+
+        # 백그라운드에서 검증 실행
+        import threading
+
+        def run_validation():
+            try:
+                logger.info(f"🔍 검증 시작: {filename} (세션: {session_id})")
+                result = validator.validate_excel_file(temp_file_path, session_id)
+
+                # 세션에 결과 저장
+                session_status[session_id] = {
+                    'status': 'completed',
+                    'result': result,
+                    'filename': filename,
+                    'temp_file_path': temp_file_path,
+                    'validator': validator,  # 교정을 위해 validator 인스턴스 보관
+                    'end_time': time.time()
+                }
+                logger.info(f"✅ 검증 완료: {session_id}")
+
+            except Exception as e:
+                logger.error(f"❌ 검증 오류: {e}")
+                session_status[session_id] = {
+                    'status': 'error',
+                    'error': str(e),
+                    'filename': filename,
+                    'end_time': time.time()
+                }
+
+        # 세션 초기화
+        session_status[session_id] = {
+            'status': 'processing',
+            'filename': filename,
+            'start_time': time.time()
+        }
+
+        # 백그라운드 스레드 시작
+        thread = threading.Thread(target=run_validation)
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
+            'status': 'success',
+            'session_id': session_id,
+            'message': f'엑셀 검증이 시작되었습니다: {filename}'
+        })
+
+    except Exception as e:
+        logger.error(f"❌ 엑셀 검증 시작 오류: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/excel-validate-progress/<session_id>')
+def api_excel_validate_progress(session_id):
+    """엑셀 검증 진행 상태 확인"""
+    try:
+        if session_id not in session_status:
+            return jsonify({
+                'status': 'error',
+                'error': '세션을 찾을 수 없습니다.'
+            }), 404
+
+        session_data = session_status[session_id]
+
+        response_data = {
+            'session_id': session_id,
+            'status': session_data['status'],
+            'filename': session_data.get('filename', 'unknown')
+        }
+
+        # 완료된 경우 결과 포함
+        if session_data['status'] in ['completed', 'error']:
+            response_data['result'] = session_data.get('result', {})
+
+            # 처리 시간 계산
+            if 'start_time' in session_data and 'end_time' in session_data:
+                processing_time = session_data['end_time'] - session_data['start_time']
+                response_data['processing_time'] = f"{processing_time:.1f}초"
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        logger.error(f"❌ 검증 진행 상태 조회 오류: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': f'진행 상태 조회 중 오류: {str(e)}'
+        }), 500
+
+@app.route('/api/excel-validate-report/<session_id>')
+def api_excel_validate_report(session_id):
+    """엑셀 검증 완료 리포트 조회"""
+    try:
+        if session_id not in session_status:
+            return jsonify({
+                'status': 'error',
+                'error': '세션을 찾을 수 없습니다.'
+            }), 404
+
+        session_data = session_status[session_id]
+
+        if session_data['status'] != 'completed':
+            return jsonify({
+                'status': 'error',
+                'error': '검증이 완료되지 않았습니다.'
+            }), 400
+
+        result = session_data.get('result', {})
+        return jsonify({
+            'status': 'success',
+            'session_id': session_id,
+            'validation_report': result
+        })
+
+    except Exception as e:
+        logger.error(f"❌ 검증 리포트 조회 오류: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': f'리포트 조회 중 오류: {str(e)}'
+        }), 500
+
+@app.route('/api/excel-auto-correct/<session_id>', methods=['POST'])
+def api_excel_auto_correct(session_id):
+    """Claude AI 자동 재번역/교정 시작"""
+    try:
+        logger.info(f"🔧 자동 교정 요청: {session_id}")
+
+        # 세션 확인
+        if session_id not in session_status:
+            return jsonify({
+                'status': 'error',
+                'error': '검증 세션을 찾을 수 없습니다.'
+            }), 404
+
+        validation_session = session_status[session_id]
+
+        if validation_session['status'] != 'completed':
+            return jsonify({
+                'status': 'error',
+                'error': '검증이 완료되지 않았습니다.'
+            }), 400
+
+        validation_result = validation_session.get('result', {})
+        if not validation_result.get('has_issues', False):
+            return jsonify({
+                'status': 'error',
+                'error': '교정이 필요한 문제가 없습니다.'
+            }), 400
+
+        # 교정 세션 ID 생성
+        correction_session_id = f"correct_{session_id}_{int(time.time())}"
+
+        # 교정 모듈 import
+        from xlt.validation.excel_corrector import ExcelCorrector
+        from xlt.core.config import XLTConfig
+
+        config = XLTConfig()
+        corrector = ExcelCorrector(config)
+
+        # 원본 엑셀 데이터 로드
+        validator = validation_session.get('validator')
+        if not validator:
+            return jsonify({
+                'status': 'error',
+                'error': '검증 데이터를 찾을 수 없습니다.'
+            }), 400
+
+        original_excel_data = validator.excel_data
+
+        # 백그라운드에서 교정 실행
+        import threading
+
+        def run_correction():
+            try:
+                logger.info(f"🔧 교정 시작: {correction_session_id}")
+                result = corrector.auto_correct_excel(
+                    correction_session_id, validation_result, original_excel_data
+                )
+
+                # 세션에 결과 저장
+                session_status[correction_session_id] = {
+                    'status': 'completed',
+                    'result': result,
+                    'original_session_id': session_id,
+                    'corrector': corrector,  # 파일 생성을 위해 보관
+                    'temp_file_path': validation_session.get('temp_file_path'),
+                    'filename': validation_session.get('filename'),
+                    'end_time': time.time()
+                }
+                logger.info(f"✅ 교정 완료: {correction_session_id}")
+
+            except Exception as e:
+                logger.error(f"❌ 교정 오류: {e}")
+                session_status[correction_session_id] = {
+                    'status': 'error',
+                    'error': str(e),
+                    'original_session_id': session_id,
+                    'end_time': time.time()
+                }
+
+        # 교정 세션 초기화
+        session_status[correction_session_id] = {
+            'status': 'processing',
+            'original_session_id': session_id,
+            'start_time': time.time()
+        }
+
+        # 백그라운드 스레드 시작
+        thread = threading.Thread(target=run_correction)
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
+            'status': 'success',
+            'correction_session_id': correction_session_id,
+            'message': 'Claude AI 자동 교정이 시작되었습니다.'
+        })
+
+    except Exception as e:
+        logger.error(f"❌ 자동 교정 시작 오류: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/excel-correction-progress/<session_id>')
+def api_excel_correction_progress(session_id):
+    """Claude AI 교정 진행 상태 확인"""
+    try:
+        if session_id not in session_status:
+            return jsonify({
+                'status': 'error',
+                'error': '교정 세션을 찾을 수 없습니다.'
+            }), 404
+
+        session_data = session_status[session_id]
+
+        # 교정기에서 세부 진행 상태 가져오기
+        corrector = session_data.get('corrector')
+        progress_data = {}
+
+        if corrector and hasattr(corrector, 'get_correction_progress'):
+            progress_data = corrector.get_correction_progress(session_id) or {}
+
+        response_data = {
+            'session_id': session_id,
+            'status': session_data['status'],
+            'progress': progress_data
+        }
+
+        # 완료된 경우 결과 포함
+        if session_data['status'] in ['completed', 'error']:
+            response_data['result'] = session_data.get('result', {})
+
+            # 처리 시간 계산
+            if 'start_time' in session_data and 'end_time' in session_data:
+                processing_time = session_data['end_time'] - session_data['start_time']
+                response_data['processing_time'] = f"{processing_time:.1f}초"
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        logger.error(f"❌ 교정 진행 상태 조회 오류: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': f'진행 상태 조회 중 오류: {str(e)}'
+        }), 500
+
+@app.route('/api/download-corrected-excel/<session_id>')
+def api_download_corrected_excel(session_id):
+    """교정된 Excel 파일 다운로드"""
+    try:
+        if session_id not in session_status:
+            return jsonify({
+                'status': 'error',
+                'error': '교정 세션을 찾을 수 없습니다.'
+            }), 404
+
+        session_data = session_status[session_id]
+
+        if session_data['status'] != 'completed':
+            return jsonify({
+                'status': 'error',
+                'error': '교정이 완료되지 않았습니다.'
+            }), 400
+
+        corrector = session_data.get('corrector')
+        original_file_path = session_data.get('temp_file_path')
+        original_filename = session_data.get('filename', 'corrected_file.xlsx')
+
+        if not corrector or not original_file_path:
+            return jsonify({
+                'status': 'error',
+                'error': '교정 데이터를 찾을 수 없습니다.'
+            }), 400
+
+        # 교정된 엑셀 파일 생성
+        corrected_file_path = corrector.create_corrected_excel_file(session_id, original_file_path)
+
+        if not corrected_file_path or not os.path.exists(corrected_file_path):
+            return jsonify({
+                'status': 'error',
+                'error': '교정된 파일 생성에 실패했습니다.'
+            }), 500
+
+        # 파일 다운로드
+        download_dir = os.path.dirname(corrected_file_path)
+        download_filename = os.path.basename(corrected_file_path)
+
+        # 사용자 친화적 파일명 생성
+        original_name = os.path.splitext(original_filename)[0]
+        user_filename = f"{original_name}_교정완료.xlsx"
+
+        return send_from_directory(
+            download_dir,
+            download_filename,
+            as_attachment=True,
+            download_name=user_filename
+        )
+
+    except Exception as e:
+        logger.error(f"❌ 교정된 엑셀 다운로드 오류: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 def process_excel_translation_from_content(file_content, filename, translation_engine, session_id=None):
     """엑셀 파일 내용으로부터 번역 처리 함수"""

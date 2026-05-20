@@ -33,7 +33,122 @@ class ClaudeTranslator:
         self._thai_guide_cache = {}  # 품질 우선 번역용 캐시 (다국어 지원)
         self._thai_cache_ttl = 7200  # 2시간 캐시 유지 (품질 번역용 더 긴 TTL)
 
+        # 사용자 정의 프롬프트 관리자
+        self._prompt_manager = None
+
         self._verify_claude_cli()
+
+    def _get_prompt_manager(self):
+        """프롬프트 매니저 싱글톤 인스턴스 반환"""
+        if self._prompt_manager is None:
+            try:
+                from ..core.prompt_manager import get_prompt_manager
+                self._prompt_manager = get_prompt_manager()
+            except Exception as e:
+                print(f"⚠️ 프롬프트 매니저 로드 실패: {e}")
+                self._prompt_manager = None
+        return self._prompt_manager
+
+    def _get_custom_prompt(self, prompt_type: str, fallback_prompt: str = "") -> str:
+        """사용자 정의 프롬프트 조회 (실패 시 fallback 사용)"""
+        try:
+            prompt_manager = self._get_prompt_manager()
+            if prompt_manager:
+                custom_prompt = prompt_manager.get_prompt(prompt_type)
+                if custom_prompt:
+                    return custom_prompt
+        except Exception as e:
+            print(f"⚠️ 사용자 정의 프롬프트 로드 실패 ({prompt_type}): {e}")
+
+        return fallback_prompt
+
+    def _format_figma_prompt(self, source_text: str, target_languages: List[str]) -> str:
+        """피그마 번역용 프롬프트 생성"""
+        try:
+            # 사용자 정의 프롬프트 조회
+            template = self._get_custom_prompt('figma_translation', '')
+
+            if template:
+                # 템플릿 변수 치환
+                target_langs_str = ", ".join(target_languages)
+                prompt = template.format(
+                    source_text=source_text,
+                    target_languages=target_langs_str
+                )
+                return prompt
+
+            # Fallback: 기본 프롬프트
+            return f"""다음 텍스트를 {", ".join(target_languages)}로 정확하게 번역해주세요.
+
+원문: {source_text}
+
+요구사항:
+1. UI/UX 컨텍스트에 맞는 자연스러운 번역을 해주세요
+2. 버튼, 레이블, 메뉴 등의 인터페이스 요소임을 고려해주세요
+3. 간결하고 명확한 표현을 사용해주세요
+4. 각 언어의 일반적인 UI 표현을 따라주세요
+
+다음 JSON 형식으로 응답해주세요:
+{{
+    "translations": {{
+        "en_US": "영어 번역",
+        "ja_JP": "일본어 번역",
+        "zh_TW": "중국어(번체) 번역",
+        "th_TH": "태국어 번역"
+    }}
+}}"""
+
+        except Exception as e:
+            print(f"❌ 피그마 프롬프트 생성 오류: {e}")
+            return f"다음 텍스트를 {', '.join(target_languages)}로 번역해주세요: {source_text}"
+
+    def _format_excel_prompt(self, text_list: List[str], target_languages: List[str]) -> str:
+        """엑셀 번역용 프롬프트 생성"""
+        try:
+            # 사용자 정의 프롬프트 조회
+            template = self._get_custom_prompt('excel_translation', '')
+
+            if template:
+                # 텍스트 리스트 포맷팅
+                formatted_list = "\n".join([f"{i+1}. {text}" for i, text in enumerate(text_list)])
+                target_langs_str = ", ".join(target_languages)
+
+                prompt = template.format(
+                    text_list=formatted_list,
+                    target_languages=target_langs_str
+                )
+                return prompt
+
+            # Fallback: 기본 프롬프트 (기존 로직 유지)
+            formatted_list = "\n".join([f"{i+1}. {text}" for i, text in enumerate(text_list)])
+            return f"""다음 텍스트들을 {", ".join(target_languages)}로 일괄 번역해주세요.
+
+번역할 텍스트 목록:
+{formatted_list}
+
+요구사항:
+1. 각 텍스트의 컨텍스트를 파악하여 적절한 번역을 해주세요
+2. 일관성 있는 용어 사용을 유지해주세요
+3. 문맥에 맞는 자연스러운 표현을 사용해주세요
+
+다음 JSON 형식으로 응답해주세요:
+{{
+    "translations": [
+        {{
+            "original": "원본 텍스트 1",
+            "translations": {{
+                "en_US": "영어 번역",
+                "ja_JP": "일본어 번역",
+                "zh_TW": "중국어(번체) 번역",
+                "th_TH": "태국어 번역"
+            }}
+        }}
+    ]
+}}"""
+
+        except Exception as e:
+            print(f"❌ 엑셀 프롬프트 생성 오류: {e}")
+            return f"다음 텍스트들을 번역해주세요: {', '.join(text_list)}"
 
     def _get_cache_key(self, prompt: str) -> str:
         """프롬프트 기반 캐시 키 생성"""
@@ -1066,7 +1181,18 @@ class ClaudeTranslator:
         full_terminology = self._load_guide_terminology()
         learned_patterns = self._load_spelling_cache_patterns()
 
-        prompt = f"""당신은 전문 번역가이자 OCR 한국어 교정 전문가입니다.
+        # 사용자 정의 프롬프트 사용 (fallback: 기존 프롬프트)
+        custom_prompt_template = self._get_custom_prompt('excel_translation', '')
+
+        if custom_prompt_template:
+            # 사용자 정의 프롬프트 사용
+            prompt = custom_prompt_template.format(
+                text_list=f"텍스트: {text}",
+                target_languages=', '.join(target_lang_list)
+            )
+        else:
+            # 기존 프롬프트 (fallback)
+            prompt = f"""당신은 전문 번역가이자 OCR 한국어 교정 전문가입니다.
 
 다음 OCR로 추출된 한국어 텍스트를 정확히 교정하고 {', '.join(target_lang_list)}로 번역하세요:
 
@@ -1383,7 +1509,19 @@ class ClaudeTranslator:
         - 설정 → Settings / 設定 / 設置 / การตั้งค่า
         """
 
-        prompt = f"""당신은 전문 번역가이자 OCR 한국어 교정 전문가입니다.
+        # 사용자 정의 프롬프트 사용 (배치 번역용)
+        custom_prompt_template = self._get_custom_prompt('excel_translation', '')
+
+        if custom_prompt_template:
+            # 사용자 정의 프롬프트 사용
+            formatted_texts = "\n".join([f"{i+1}. {text}" for i, text in enumerate(texts)])
+            prompt = custom_prompt_template.format(
+                text_list=formatted_texts,
+                target_languages=', '.join(target_lang_list)
+            )
+        else:
+            # 기존 프롬프트 (fallback)
+            prompt = f"""당신은 전문 번역가이자 OCR 한국어 교정 전문가입니다.
 
 아래 {len(texts)}개의 OCR로 추출된 한국어 텍스트를 정확히 교정하고 {', '.join(target_lang_list)}로 번역하세요:
 

@@ -1,0 +1,81 @@
+{
+  "figma_translation": {
+    "name": "피그마 번역 프롬프트",
+    "description": "피그마에서 추출한 텍스트를 다국어로 번역할 때 사용되는 프롬프트",
+    "prompt": "다음 텍스트를 {target_languages}로 정확하게 번역해주세요.\n\n원문: {source_text}\n\n요구사항:\n1. UI/UX 컨텍스트에 맞는 자연스러운 번역을 해주세요\n2. 버튼, 레이블, 메뉴 등의 인터페이스 요소임을 고려해주세요\n3. 간결하고 명확한 표현을 사용해주세요\n4. 각 언어의 일반적인 UI 표현을 따라주세요\n5. 기술 용어는 해당 언어권의 표준 용어를 사용해주세요\n\n다음 JSON 형식으로 응답해주세요:\n```json\n{{\n    \"translations\": {{\n        \"en_US\": \"영어 번역\",\n        \"ja_JP\": \"일본어 번역\",\n        \"zh_TW\": \"중국어(번체) 번역\",\n        \"th_TH\": \"태국어 번역\"\n    }}\n}}\n```",
+    "variables": [
+      "source_text",
+      "target_languages"
+    ],
+    "last_modified": "2026-05-20T19:28:32.127120"
+  },
+  "excel_translation": {
+    "name": "엑셀 번역 프롬프트",
+    "description": "엑셀 파일의 텍스트를 일괄 번역할 때 사용되는 프롬프트",
+    "prompt": "다음 텍스트들을 {target_languages}로 일괄 번역해주세요.\n\n번역할 텍스트 목록:\n{text_list}\n\n요구사항:\n1. 각 텍스트의 컨텍스트를 파악하여 적절한 번역을 해주세요\n2. 일관성 있는 용어 사용을 유지해주세요\n3. 문맥에 맞는 자연스러운 표현을 사용해주세요\n4. 전문 용어는 해당 분야의 표준 용어를 사용해주세요\n\n다음 JSON 형식으로 응답해주세요:\n```json\n{{\n    \"translations\": [\n        {{\n            \"original\": \"원본 텍스트 1\",\n            \"translations\": {{\n                \"en_US\": \"영어 번역\",\n                \"ja_JP\": \"일본어 번역\",\n                \"zh_TW\": \"중국어(번체) 번역\",\n                \"th_TH\": \"태국어 번역\"\n            }}\n        }}\n    ]\n}}\n```",
+    "variables": [
+      "text_list",
+      "target_languages"
+    ],
+    "last_modified": "2026-05-20T19:28:32.127125"
+  },
+  "excel_validation_spelling": {
+    "name": "엑셀 검증 - 맞춤법 검증",
+    "description": "한글 텍스트의 맞춤법과 띄어쓰기를 검증하는 프롬프트",
+    "prompt": "다음 한글 텍스트들의 맞춤법과 띄어쓰기를 검증해주세요.\n\n텍스트 목록:\n{text_list}\n\n각 텍스트에 대해 다음 형식으로 응답해주세요:\n\n```json\n{{\n    \"results\": [\n        {{\n            \"index\": 1,\n            \"original_text\": \"원본 텍스트\",\n            \"is_correct\": true/false,\n            \"errors\": [\n                {{\n                    \"type\": \"맞춤법\" 또는 \"띄어쓰기\",\n                    \"error\": \"오류 내용\",\n                    \"suggestion\": \"수정 제안\"\n                }}\n            ]\n        }}\n    ]\n}}\n```\n\nUI/UX 용어, 기술 용어, 금융 용어는 일반적인 표기를 따르되, 명백한 오타나 띄어쓰기 오류만 지적해주세요.",
+    "variables": [
+      "text_list"
+    ],
+    "last_modified": "2026-05-20T19:28:32.127128"
+  },
+  "excel_validation_terminology": {
+    "name": "엑셀 검증 - 용어집 검증",
+    "description": "한글 텍스트와 용어집을 비교하여 일관성을 검증하는 프롬프트",
+    "prompt": "다음 한글 텍스트들을 제공된 용어집과 비교하여 용어 일관성을 검증해주세요.\n\n검증할 텍스트:\n{text_list}\n\n참고 용어집:\n{terminology_data}\n\n각 텍스트에 대해 다음 형식으로 응답해주세요:\n\n```json\n{{\n    \"results\": [\n        {{\n            \"index\": 1,\n            \"original_text\": \"원본 텍스트\",\n            \"has_terminology_issue\": true/false,\n            \"issues\": [\n                {{\n                    \"wrong_term\": \"잘못 사용된 용어\",\n                    \"suggested_term\": \"올바른 용어 (용어집 기준)\",\n                    \"reason\": \"문제 설명\"\n                }}\n            ]\n        }}\n    ]\n}}\n```\n\n용어집에 있는 표준 용어와 다른 표현이 사용된 경우 지적해주세요.",
+    "variables": [
+      "text_list",
+      "terminology_data"
+    ],
+    "last_modified": "2026-05-20T19:28:32.127131"
+  },
+  "excel_validation_language": {
+    "name": "엑셀 검증 - 언어 일치성",
+    "description": "각 열의 텍스트가 정의된 언어와 일치하는지 검증하는 프롬프트",
+    "prompt": "다음 엑셀 열들의 텍스트가 해당 언어에 맞는지 검증해주세요.\n\n열별 샘플 텍스트:\n{texts_by_column}\n\n각 열에 대해 다음 형식으로 응답해주세요:\n\n```json\n{{\n    \"results\": [\n        {{\n            \"column\": \"en_US\",\n            \"expected_language\": \"영어\",\n            \"detected_issues\": [\n                {{\n                    \"text\": \"문제가 있는 텍스트\",\n                    \"detected_language\": \"감지된 언어\",\n                    \"issue\": \"문제 설명\",\n                    \"row_hint\": \"몇 번째 샘플인지\"\n                }}\n            ]\n        }}\n    ]\n}}\n```\n\n언어 코드와 실제 텍스트 언어가 일치하지 않는 경우를 찾아주세요.",
+    "variables": [
+      "texts_by_column"
+    ],
+    "last_modified": "2026-05-20T19:28:32.127133"
+  },
+  "excel_validation_multilingual": {
+    "name": "엑셀 검증 - 다국어 용어집",
+    "description": "다국어 텍스트와 용어집을 비교하여 오역을 검증하는 프롬프트",
+    "prompt": "다음 다국어 텍스트들을 용어집과 비교하여 용어 일관성을 검증해주세요.\n\n검증할 텍스트 (언어별):\n{texts_by_language}\n\n참고 용어집:\n{terminology_data}\n\n각 언어별로 다음 형식으로 응답해주세요:\n\n```json\n{{\n    \"results\": [\n        {{\n            \"language\": \"en_US\",\n            \"issues\": [\n                {{\n                    \"text\": \"문제가 있는 텍스트\",\n                    \"wrong_term\": \"잘못된 용어\",\n                    \"suggested_term\": \"표준 용어\",\n                    \"issue_type\": \"오역\" 또는 \"용어 불일치\"\n                }}\n            ]\n        }}\n    ]\n}}\n```\n\n각 언어에서 표준 용어집과 다른 용어가 사용되었거나 오역으로 보이는 경우를 찾아주세요.",
+    "variables": [
+      "texts_by_language",
+      "terminology_data"
+    ],
+    "last_modified": "2026-05-20T19:28:32.127136"
+  },
+  "excel_validation_completeness": {
+    "name": "엑셀 검증 - 데이터 완성도",
+    "description": "엑셀 데이터의 빈 필드와 완성도를 검증하는 프롬프트",
+    "prompt": "다음 엑셀 데이터의 완성도를 검증해주세요.\n\n{sample_data}\n\n총 {total_rows}개 행이 있습니다.\n\n다음 형식으로 응답해주세요:\n\n```json\n{{\n    \"summary\": {{\n        \"total_rows\": {total_rows},\n        \"missing_key_ids\": 0,\n        \"missing_korean\": 0,\n        \"missing_translations\": 0,\n        \"duplicate_keys\": 0\n    }},\n    \"issues\": [\n        {{\n            \"row_number\": 1,\n            \"key_id\": \"XLT_key_001\",\n            \"issue_type\": \"빈 필드\" 또는 \"중복 키\" 또는 \"필수 필드 누락\",\n            \"missing_languages\": [\"en_US\", \"ja_JP\"],\n            \"description\": \"문제 설명\"\n        }}\n    ]\n}}\n```\n\n다음 사항들을 검증해주세요:\n1. Key ID가 비어있는 행\n2. ko_KR (한국어)가 비어있는 행 - 필수 필드\n3. 번역이 누락된 언어들\n4. 중복된 Key ID\n5. 전체적인 데이터 완성도",
+    "variables": [
+      "sample_data",
+      "total_rows"
+    ],
+    "last_modified": "2026-05-20T19:28:32.127139"
+  },
+  "excel_auto_correction": {
+    "name": "엑셀 자동 교정",
+    "description": "Claude AI가 텍스트를 자동으로 교정하고 재번역하는 프롬프트",
+    "prompt": "다음 한국어 텍스트를 {target_languages}로 정확하게 번역해주세요.\n\n원문 (한국어): {korean_text}\n\n{terminology_context}\n\n요구사항:\n1. 용어집의 표준 용어를 우선적으로 사용하세요\n2. 각 언어의 자연스러운 표현을 사용하세요\n3. UI/UX, 금융, 기술 용어는 해당 분야의 표준 용어를 사용하세요\n4. 일관된 톤앤매너를 유지하세요\n\n다음 형식으로 응답해주세요:\n\n```json\n{{\n    \"original\": \"{korean_text}\",\n    \"translations\": {{\n        \"en_US\": \"영어 번역\",\n        \"ja_JP\": \"일본어 번역\",\n        \"zh_TW\": \"중국어(번체) 번역\",\n        \"th_TH\": \"태국어 번역\"\n    }},\n    \"used_terminology\": [\n        {{\n            \"korean_term\": \"사용된 한국어 용어\",\n            \"translations\": {{\n                \"en_US\": \"영어 용어\",\n                \"ja_JP\": \"일본어 용어\"\n            }}\n        }}\n    ]\n}}\n```",
+    "variables": [
+      "korean_text",
+      "target_languages",
+      "terminology_context"
+    ],
+    "last_modified": "2026-05-20T19:28:32.127142"
+  }
+}

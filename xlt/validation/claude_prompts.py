@@ -35,9 +35,12 @@ class ClaudePrompts:
 
         return fallback_prompt
 
-    def get_spelling_validation_prompt(self, korean_texts: list) -> str:
+    def get_spelling_validation_prompt(self, korean_texts: list, key_ids: list = None) -> str:
         """한글 맞춤법/띄어쓰기 검증 프롬프트"""
-        text_list = '\n'.join([f"{i+1}. {text}" for i, text in enumerate(korean_texts)])
+        text_list = ""
+        for i, text in enumerate(korean_texts):
+            key_id = key_ids[i] if key_ids and i < len(key_ids) else f"item_{i+1}"
+            text_list += f"{i+1}. [{key_id}] {text}\n"
 
         # 사용자 정의 프롬프트 조회
         custom_template = self._get_custom_prompt('excel_validation_spelling', '')
@@ -77,9 +80,12 @@ class ClaudePrompts:
 
 UI/UX 용어, 기술 용어, 금융 용어는 일반적인 표기를 따르되, 명백한 오타나 띄어쓰기 오류만 지적해주세요."""
 
-    def get_terminology_validation_prompt(self, korean_texts: list, terminology_data: dict) -> str:
+    def get_terminology_validation_prompt(self, korean_texts: list, terminology_data: dict, key_ids: list = None) -> str:
         """한글 용어집 비교 검증 프롬프트"""
-        text_list = '\n'.join([f"{i+1}. {text}" for i, text in enumerate(korean_texts)])
+        text_list = ""
+        for i, text in enumerate(korean_texts):
+            key_id = key_ids[i] if key_ids and i < len(key_ids) else f"item_{i+1}"
+            text_list += f"{i+1}. [{key_id}] {text}\n"
 
         # 용어집 데이터를 문자열로 변환
         terms_str = ""
@@ -119,6 +125,8 @@ UI/UX 용어, 기술 용어, 금융 용어는 일반적인 표기를 따르되, 
             "index": 1,
             "original_text": "원본 텍스트",
             "has_terminology_issue": true/false,
+            "is_exception": false,
+            "exception_reason": "exceptional 항목인 경우 사유",
             "issues": [
                 {{
                     "wrong_term": "잘못 사용된 용어",
@@ -131,7 +139,7 @@ UI/UX 용어, 기술 용어, 금융 용어는 일반적인 표기를 따르되, 
 }}
 ```
 
-용어집에 있는 표준 용어와 다른 표현이 사용된 경우 지적해주세요."""
+용어집에 있는 표준 용어와 다른 표현이 사용된 경우 지적해주세요. 만약 exceptional 항목으로 검증을 통과시키는 경우 is_exception을 true로 설정하고 사유를 명시하세요."""
 
     @staticmethod
     def get_language_detection_prompt(texts_by_column: dict) -> str:
@@ -233,7 +241,7 @@ UI/UX 용어, 기술 용어, 금융 용어는 일반적인 표기를 따르되, 
 각 언어에서 표준 용어집과 다른 용어가 사용되었거나 오역으로 보이는 경우를 찾아주세요."""
 
     @staticmethod
-    def get_completeness_validation_prompt(excel_data: dict) -> str:
+    def get_completeness_validation_prompt(completeness_data: list) -> str:
         """빈 행 및 데이터 완성도 검증 프롬프트"""
         # 데이터 샘플 생성 (처음 5행)
         sample_data = "행별 데이터 샘플:\n"

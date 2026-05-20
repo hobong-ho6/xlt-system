@@ -134,18 +134,31 @@ class ExcelValidator:
             wb = openpyxl.load_workbook(file_path)
             ws = wb.active
 
-            # 헤더 행 확인
+            # 헤더 행 확인 (빈 헤더도 처리)
             headers = []
             for col in range(1, ws.max_column + 1):
                 header = ws.cell(row=1, column=col).value
                 if header:
                     headers.append(str(header))
                 else:
-                    break
+                    # 첫 번째 열이 빈값이면 'Key ID'로 가정
+                    if col == 1:
+                        headers.append('Key ID')
+                        logger.info(f"📝 첫 번째 열 헤더가 빈값 - 'Key ID'로 가정")
+                    else:
+                        # 다른 열이 빈값이면 중단
+                        break
+
+            logger.info(f"📋 엑셀 데이터 로드 완료: {ws.max_row-1}행, 헤더: {headers}")
 
             expected_headers = ['Key ID', 'en_US', 'ko_KR', 'ja_JP', 'zh_TW', 'th_TH']
-            if not all(h in headers for h in expected_headers[:len(headers)]):
-                logger.warning(f"⚠️ 예상되지 않은 헤더 구조: {headers}")
+            if len(headers) < 3:  # 최소 Key ID, 언어1, 언어2는 있어야 함
+                logger.error(f"❌ 헤더가 부족합니다: {headers}")
+                return {}
+
+            # 한국어 열 확인
+            if 'ko_KR' not in headers:
+                logger.warning(f"⚠️ 한국어(ko_KR) 열을 찾을 수 없습니다: {headers}")
 
             # 데이터 행 처리
             excel_data = {}
@@ -161,7 +174,7 @@ class ExcelValidator:
 
                 excel_data[str(key_id)] = row_data
 
-            logger.info(f"📋 엑셀 데이터 로드 완료: {len(excel_data)}행, 헤더: {headers}")
+            logger.info(f"✅ 데이터 파싱 완료: {len(excel_data)}개 키 로드됨")
             return excel_data
 
         except Exception as e:
@@ -182,27 +195,39 @@ class ExcelValidator:
     def _validate_korean_spelling(self) -> Dict[str, Any]:
         """한글 맞춤법/띄어쓰기 검증"""
         try:
-            # 한글 텍스트 추출
-            korean_texts = []
+            # 한글 텍스트와 Key ID 매핑 추출
+            korean_data = []
+            row_number = 2  # 엑셀은 2행부터 데이터 시작
             for key_id, row_data in self.excel_data.items():
                 korean_text = row_data.get('ko_KR', '')
                 if korean_text and korean_text.strip():
-                    korean_texts.append(korean_text)
+                    korean_data.append({
+                        'key_id': key_id,
+                        'text': korean_text,
+                        'row_number': row_number
+                    })
+                row_number += 1
 
-            if not korean_texts:
+            if not korean_data:
                 return {'status': 'no_korean_text', 'issues': []}
 
-            # Claude AI로 맞춤법 검증
-            prompt = self.prompts.get_spelling_validation_prompt(korean_texts[:10])  # 처음 10개만
+            # Claude AI로 맞춤법 검증 (처음 10개만)
+            sample_data = korean_data[:10]
+            prompt = self.prompts.get_spelling_validation_prompt([item['text'] for item in sample_data], [item['key_id'] for item in sample_data])
+            logger.info(f"📝 맞춤법 검증 프롬프트 생성 완료 - {len(sample_data)}개 텍스트")
+
             response = self._call_claude_ai(prompt)
 
             if response and 'results' in response:
+                logger.info(f"✅ 맞춤법 검증 응답 처리 - {len(response['results'])}개 결과")
                 # 결과 처리
                 issues = []
-                for result in response['results']:
-                    if not result.get('is_correct', True):
+                for i, result in enumerate(response['results']):
+                    if not result.get('is_correct', True) and i < len(sample_data):
                         for error in result.get('errors', []):
                             issues.append({
+                                'key_id': sample_data[i]['key_id'],
+                                'row_number': sample_data[i]['row_number'],
                                 'text': result['original_text'],
                                 'error_type': error['type'],
                                 'error': error['error'],
@@ -212,7 +237,7 @@ class ExcelValidator:
                 return {
                     'status': 'completed',
                     'issues': issues,
-                    'total_checked': len(korean_texts[:10])
+                    'total_checked': len(sample_data)
                 }
 
             return {'status': 'claude_error', 'issues': []}
@@ -224,37 +249,61 @@ class ExcelValidator:
     def _validate_korean_terminology(self) -> Dict[str, Any]:
         """한글 용어집 비교 검증"""
         try:
-            # 한글 텍스트 추출
-            korean_texts = []
+            # 한글 텍스트와 Key ID 매핑 추출
+            korean_data = []
+            row_number = 2  # 엑셀은 2행부터 데이터 시작
             for key_id, row_data in self.excel_data.items():
                 korean_text = row_data.get('ko_KR', '')
                 if korean_text and korean_text.strip():
-                    korean_texts.append(korean_text)
+                    korean_data.append({
+                        'key_id': key_id,
+                        'text': korean_text,
+                        'row_number': row_number
+                    })
+                row_number += 1
 
-            if not korean_texts:
+            if not korean_data:
                 return {'status': 'no_korean_text', 'issues': []}
 
-            # Claude AI로 용어집 검증
-            prompt = self.prompts.get_terminology_validation_prompt(korean_texts[:10], self.terminology_data)
+            # Claude AI로 용어집 검증 (처음 10개만)
+            sample_data = korean_data[:10]
+            prompt = self.prompts.get_terminology_validation_prompt([item['text'] for item in sample_data], self.terminology_data, [item['key_id'] for item in sample_data])
             response = self._call_claude_ai(prompt)
 
             if response and 'results' in response:
                 # 결과 처리
                 issues = []
-                for result in response['results']:
+                exceptions = []
+                for i, result in enumerate(response['results']):
+                    if i >= len(sample_data):
+                        continue
+
+                    current_data = sample_data[i]
                     if result.get('has_terminology_issue', False):
                         for issue in result.get('issues', []):
                             issues.append({
+                                'key_id': current_data['key_id'],
+                                'row_number': current_data['row_number'],
                                 'text': result['original_text'],
                                 'wrong_term': issue['wrong_term'],
                                 'suggested_term': issue['suggested_term'],
                                 'reason': issue['reason']
                             })
 
+                    # exceptional 항목 처리
+                    if result.get('is_exception', False):
+                        exceptions.append({
+                            'key_id': current_data['key_id'],
+                            'row_number': current_data['row_number'],
+                            'text': result['original_text'],
+                            'exception_reason': result.get('exception_reason', 'exceptional 항목으로 검증 통과')
+                        })
+
                 return {
                     'status': 'completed',
                     'issues': issues,
-                    'total_checked': len(korean_texts[:10])
+                    'exceptions': exceptions,
+                    'total_checked': len(sample_data)
                 }
 
             return {'status': 'claude_error', 'issues': []}
@@ -266,18 +315,25 @@ class ExcelValidator:
     def _validate_language_consistency(self) -> Dict[str, Any]:
         """언어 일치성 검증"""
         try:
-            # 언어별 텍스트 수집
+            # 언어별 텍스트와 Key ID 매핑 수집
             texts_by_column = {}
             languages = ['en_US', 'ko_KR', 'ja_JP', 'zh_TW', 'th_TH']
 
             for lang in languages:
-                texts = []
+                texts_data = []
+                row_number = 2  # 엑셀은 2행부터 데이터 시작
                 for key_id, row_data in self.excel_data.items():
                     text = row_data.get(lang, '')
                     if text and text.strip():
-                        texts.append(text)
-                if texts:
-                    texts_by_column[lang] = texts[:5]  # 처음 5개만 샘플로
+                        texts_data.append({
+                            'key_id': key_id,
+                            'text': text,
+                            'row_number': row_number
+                        })
+                    row_number += 1
+
+                if texts_data:
+                    texts_by_column[lang] = texts_data[:5]  # 처음 5개만 샘플로
 
             if not texts_by_column:
                 return {'status': 'no_text_data', 'issues': []}
@@ -290,8 +346,20 @@ class ExcelValidator:
                 # 결과 처리
                 issues = []
                 for result in response['results']:
+                    column = result['column']
                     for detected_issue in result.get('detected_issues', []):
+                        # 해당 텍스트의 key_id와 row_number 찾기
+                        target_text = detected_issue['text']
+                        matched_data = None
+                        if column in texts_by_column:
+                            for data in texts_by_column[column]:
+                                if data['text'] == target_text:
+                                    matched_data = data
+                                    break
+
                         issues.append({
+                            'key_id': matched_data['key_id'] if matched_data else 'unknown',
+                            'row_number': matched_data['row_number'] if matched_data else 0,
                             'column': result['column'],
                             'expected_language': result['expected_language'],
                             'text': detected_issue['text'],
@@ -314,18 +382,25 @@ class ExcelValidator:
     def _validate_multilingual_terminology(self) -> Dict[str, Any]:
         """다국어 용어집 비교 검증"""
         try:
-            # 언어별 텍스트 수집
+            # 언어별 텍스트와 Key ID 매핑 수집
             texts_by_language = {}
             languages = ['en_US', 'ja_JP', 'zh_TW', 'th_TH']  # 한국어 제외
 
             for lang in languages:
-                texts = []
+                texts_data = []
+                row_number = 2  # 엑셀은 2행부터 데이터 시작
                 for key_id, row_data in self.excel_data.items():
                     text = row_data.get(lang, '')
                     if text and text.strip():
-                        texts.append(text)
-                if texts:
-                    texts_by_language[lang] = texts[:5]  # 샘플
+                        texts_data.append({
+                            'key_id': key_id,
+                            'text': text,
+                            'row_number': row_number
+                        })
+                    row_number += 1
+
+                if texts_data:
+                    texts_by_language[lang] = texts_data[:5]  # 샘플
 
             if not texts_by_language:
                 return {'status': 'no_multilingual_data', 'issues': []}
@@ -338,8 +413,20 @@ class ExcelValidator:
                 # 결과 처리
                 issues = []
                 for result in response['results']:
+                    language = result['language']
                     for issue in result.get('issues', []):
+                        # 해당 텍스트의 key_id와 row_number 찾기
+                        target_text = issue['text']
+                        matched_data = None
+                        if language in texts_by_language:
+                            for data in texts_by_language[language]:
+                                if data['text'] == target_text:
+                                    matched_data = data
+                                    break
+
                         issues.append({
+                            'key_id': matched_data['key_id'] if matched_data else 'unknown',
+                            'row_number': matched_data['row_number'] if matched_data else 0,
                             'language': result['language'],
                             'text': issue['text'],
                             'wrong_term': issue['wrong_term'],
@@ -362,13 +449,34 @@ class ExcelValidator:
     def _validate_data_completeness(self) -> Dict[str, Any]:
         """데이터 완성도 검증"""
         try:
+            # 완성도 데이터 준비 (Key ID와 행번호 포함)
+            completeness_data = []
+            row_number = 2  # 엑셀은 2행부터 데이터 시작
+            for key_id, row_data in self.excel_data.items():
+                completeness_data.append({
+                    'key_id': key_id,
+                    'row_number': row_number,
+                    'row_data': row_data
+                })
+                row_number += 1
+
             # Claude AI로 완성도 검증
-            prompt = self.prompts.get_completeness_validation_prompt(self.excel_data)
+            prompt = self.prompts.get_completeness_validation_prompt(completeness_data)
             response = self._call_claude_ai(prompt)
 
             if response:
-                # 결과 처리
-                issues = response.get('issues', [])
+                # 결과 처리 - key_id와 row_number 정보 보존
+                issues = []
+                for issue in response.get('issues', []):
+                    # Claude AI가 반환한 key_id 사용 (실제 엑셀 데이터)
+                    issues.append({
+                        'key_id': issue.get('key_id', 'unknown'),
+                        'row_number': issue.get('row_number', 0),
+                        'issue_type': issue.get('issue_type', 'completeness'),
+                        'description': issue.get('description', ''),
+                        'missing_languages': issue.get('missing_languages', [])
+                    })
+
                 summary = response.get('summary', {})
 
                 return {

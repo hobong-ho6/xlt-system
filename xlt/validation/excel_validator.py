@@ -112,16 +112,23 @@ class ExcelValidator:
         """🆕 종합 검증 프롬프트를 사용한 통합 검증"""
         try:
             logger.info("📋 종합 검증 프롬프트 생성 중...")
+            logger.info(f"📊 엑셀 데이터 상태: {len(self.excel_data)}개 행 로드됨")
+
+            if not self.excel_data:
+                logger.error("❌ 엑셀 데이터가 비어있습니다!")
+                return self._create_error_result("엑셀 데이터 로드 실패")
 
             # 종합 검증 프롬프트 생성
             prompt = self.prompts.get_comprehensive_validation_prompt(self.excel_data)
+            logger.info(f"✅ 프롬프트 생성 완료: {len(prompt)} 문자")
 
             logger.info("🤖 Claude AI 종합 검증 실행 중...")
-            result = self._call_claude_cli(prompt, "종합 검증")
+            claude_response = self.claude_translator._call_claude_cli(prompt)
+            result = {'response': claude_response}
 
             if not result or 'error' in result:
                 logger.error(f"❌ Claude AI 종합 검증 실패: {result}")
-                return self._create_empty_validation_result("종합 검증")
+                return self._create_error_result("Claude AI 종합 검증 실패")
 
             # Claude 응답을 파싱하여 구조화된 결과로 변환
             parsed_result = self._parse_comprehensive_result(result.get('response', ''))
@@ -131,7 +138,7 @@ class ExcelValidator:
 
         except Exception as e:
             logger.error(f"❌ 종합 검증 오류: {e}")
-            return self._create_empty_validation_result("종합 검증")
+            return self._create_error_result(f"종합 검증 오류: {str(e)}")
 
     def _validate_step_by_step(self, validation_results: Dict, update_progress) -> Dict[str, Any]:
         """🔄 기존 5단계 개별 검증"""
@@ -260,8 +267,21 @@ class ExcelValidator:
     def _load_excel_file(self, file_path: str) -> Dict[str, Dict[str, str]]:
         """엑셀 파일 로드 및 데이터 구조화"""
         try:
+            logger.info(f"📂 엑셀 파일 로드 시도: {file_path}")
+
+            # 파일 존재 여부 확인
+            import os
+            if not os.path.exists(file_path):
+                logger.error(f"❌ 파일이 존재하지 않습니다: {file_path}")
+                return {}
+
+            # 파일 크기 확인
+            file_size = os.path.getsize(file_path)
+            logger.info(f"📊 파일 크기: {file_size} bytes")
+
             wb = openpyxl.load_workbook(file_path)
             ws = wb.active
+            logger.info(f"✅ 엑셀 워크북 로드 성공: {ws.max_row}행 x {ws.max_column}열")
 
             # 헤더 행 확인 (빈 헤더도 처리)
             headers = []

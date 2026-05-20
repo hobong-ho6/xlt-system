@@ -5091,12 +5091,26 @@ def api_excel_validate():
 
         # 임시 파일로 저장
         import tempfile
+        import os
         from werkzeug.utils import secure_filename
 
         filename = secure_filename(file.filename)
+        logger.info(f"📂 원본 파일명: {file.filename} → 보안 파일명: {filename}")
+
         with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
-            file.save(tmp_file.name)
             temp_file_path = tmp_file.name
+            logger.info(f"📂 임시 파일 생성: {temp_file_path}")
+
+        # 파일 저장
+        file.save(temp_file_path)
+
+        # 파일 저장 확인
+        if os.path.exists(temp_file_path):
+            file_size = os.path.getsize(temp_file_path)
+            logger.info(f"✅ 임시 파일 저장 완료: {temp_file_path} ({file_size} bytes)")
+        else:
+            logger.error(f"❌ 임시 파일 저장 실패: {temp_file_path}")
+            return jsonify({'status': 'error', 'error': '파일 저장 실패'}), 500
 
         # 세션 ID 생성
         session_id = f"validate_{int(time.time())}"
@@ -5120,9 +5134,12 @@ def api_excel_validate():
         def run_validation():
             try:
                 logger.info(f"🔍 전체 검증 시작: {filename} (세션: {session_id})")
+                logger.info(f"📂 임시 파일 경로: {temp_file_path}")
+                logger.info(f"🎯 검증 모드: {use_comprehensive}")
 
                 # 진행 상황 업데이트 콜백
                 def progress_update(step: str, percent: int, message: str):
+                    logger.info(f"📈 진행 상황: {step} ({percent}%) - {message}")
                     if session_id in session_status:
                         session_status[session_id]['progress'] = {
                             'step': step,
@@ -5131,7 +5148,9 @@ def api_excel_validate():
                             'is_full_validation': True  # 🚀 전체 검증 표시
                         }
 
+                logger.info("🚀 ExcelValidator.validate_excel_file 호출 중...")
                 result = validator.validate_excel_file(temp_file_path, session_id, progress_update, use_comprehensive)
+                logger.info(f"✅ ExcelValidator.validate_excel_file 완료: {result.get('status', 'unknown')}")
 
                 # 세션에 결과 저장
                 session_status[session_id] = {

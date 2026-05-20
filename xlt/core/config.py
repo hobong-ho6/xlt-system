@@ -55,7 +55,7 @@ class XLTConfig:
     translation_timeout: int = 120
 
     # Claude CLI 설정
-    claude_timeout: int = 120  # Claude CLI 타임아웃 (초)
+    claude_timeout: int = 300  # Claude CLI 타임아웃 (초) - 종합검증 대응
     claude_chunk_size: int = 10  # 청크 크기 (성능 최적화)
 
     # 출력 설정

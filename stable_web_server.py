@@ -1056,7 +1056,7 @@ def api_claude_account():
     except subprocess.TimeoutExpired:
         return jsonify({
             'success': False,
-            'error': 'Claude CLI 응답 시간 초과 (10초)',
+            'error': 'Claude CLI 응답 시간 초과 (30초)',
             'timestamp': datetime.now().isoformat()
         }), 504
     except FileNotFoundError:
@@ -2698,7 +2698,7 @@ def translate_selected():
                     'engine_name': engine_name,
                     'translation_mode': translation_mode,
                     'start_time': datetime.now().isoformat(),
-                    'timeout_seconds': 10
+                    'timeout_seconds': 30
                 })
 
                 # Claude CLI 연결 테스트 타임아웃 처리 (v5.0.6 Flask 워커 스레드 호환)
@@ -2725,9 +2725,9 @@ def translate_selected():
                     test_thread.daemon = True
                     test_thread.start()
 
-                    # 10초 타임아웃으로 결과 대기
+                    # 30초 타임아웃으로 결과 대기
                     try:
-                        result_type, result_value = result_queue.get(timeout=10)
+                        result_type, result_value = result_queue.get(timeout=30)
                         test_duration = time.time() - test_start_time
 
                         if result_type == 'success':
@@ -2753,13 +2753,13 @@ def translate_selected():
                         # 타임아웃 발생
                         timeout_occurred.set()
                         test_duration = time.time() - test_start_time
-                        logger.warning(f"[{session_id}] ⏰ Claude CLI 연결 테스트 타임아웃 (10초)")
+                        logger.warning(f"[{session_id}] ⏰ Claude CLI 연결 테스트 타임아웃 (30초)")
 
                         log_connection_test_detail(session_id, {
                             'method': 'threading + queue',
                             'result': 'timeout',
                             'duration': test_duration,
-                            'timeout_seconds': 10
+                            'timeout_seconds': 30
                         })
 
                         # Claude 타임아웃 시 연결 실패로 처리

@@ -2765,10 +2765,12 @@ class XLTWebInterface {
                                 </div>
                     `;
 
-                    // 구체적인 수정 제안
+                    // 🚀 다른 Claude 수준의 구체적인 수정 제안
                     if (issue.suggestion) {
                         html += `<div class="mt-2"><small class="text-success">💡 수정 제안: ${issue.suggestion}</small></div>`;
                     }
+
+                    // 기존 검증 결과 표시
                     if (issue.wrong_term && issue.suggested_term) {
                         html += `<div class="mt-2"><small>❌ <code>${issue.wrong_term}</code> → ✅ <code>${issue.suggested_term}</code></small></div>`;
                     }
@@ -2777,6 +2779,24 @@ class XLTWebInterface {
                     }
                     if (issue.detected_language && issue.expected_language) {
                         html += `<div class="mt-2"><small>🌐 ${issue.detected_language} → ${issue.expected_language} 번역 필요</small></div>`;
+                    }
+
+                    // 🚀 새로운 검증 결과 타입들 표시
+                    if (issue.problems && issue.problems.length > 0) {
+                        html += `<div class="mt-2"><small>⚠️ 언어 문제: <code>${issue.problems.join(', ')}</code></small></div>`;
+                    }
+                    if (issue.ko_placeholders || issue.target_placeholders) {
+                        const koPlaceholders = (issue.ko_placeholders || []).join(', ') || '(없음)';
+                        const targetPlaceholders = (issue.target_placeholders || []).join(', ') || '(없음)';
+                        html += `<div class="mt-2"><small>🔧 Placeholder 비교:</small></div>`;
+                        html += `<div class="mt-1"><small>　　한국어: <code>${koPlaceholders}</code></small></div>`;
+                        html += `<div class="mt-1"><small>　　${issue.language}: <code>${targetPlaceholders}</code></small></div>`;
+                    }
+                    if (issue.missing && issue.missing.length > 0) {
+                        html += `<div class="mt-2"><small class="text-danger">➖ 누락된 placeholder: <code>${issue.missing.join(', ')}</code></small></div>`;
+                    }
+                    if (issue.extra && issue.extra.length > 0) {
+                        html += `<div class="mt-2"><small class="text-warning">➕ 추가된 placeholder: <code>${issue.extra.join(', ')}</code></small></div>`;
                     }
 
                     html += '</div></div>';

@@ -15,6 +15,7 @@ import traceback
 from ..translation.claude_translator import ClaudeTranslator
 from ..translation.unifi_translator import UnifiTranslator
 from .claude_prompts import ClaudePrompts
+from .language_detector import LanguageDetector
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class ExcelValidator:
         self.claude_translator = ClaudeTranslator(config)
         self.unifi_translator = UnifiTranslator(config)
         self.prompts = ClaudePrompts()
+        self.language_detector = LanguageDetector()  # 🚀 다른 Claude 검증 시스템
 
         # 검증 결과 저장
         self.validation_results = {}
@@ -509,10 +511,10 @@ class ExcelValidator:
     def _validate_data_completeness(self) -> Dict[str, Any]:
         """데이터 완성도 검증 - 빈칸 검증 강화"""
         try:
-            # 로컬 검증들 먼저 수행
+            # 🚀 다른 Claude 수준의 로컬 검증들 수행
             empty_issues = self._check_empty_cells()
-            specific_issues = self._check_specific_issues()
-            local_issues = empty_issues + specific_issues
+            advanced_issues = self._check_advanced_issues()  # 🚀 정교한 검증 시스템
+            local_issues = empty_issues + advanced_issues
 
             # 완성도 데이터 준비 (Key ID와 행번호 포함)
             completeness_data = []
@@ -615,96 +617,174 @@ class ExcelValidator:
         logger.info(f"📊 로컬 빈칸 검증: {len(empty_issues)}개 문제 발견")
         return empty_issues
 
-    def _check_specific_issues(self) -> List[Dict[str, Any]]:
-        """구체적인 문제 유형 감지 (줄바꿈, placeholder, 언어혼재 등)"""
-        specific_issues = []
+    def _check_advanced_issues(self) -> List[Dict[str, Any]]:
+        """🚀 다른 Claude 수준의 정교한 문제 감지 시스템"""
+        all_issues = []
         row_number = 2
 
+        # 언어 목록
+        languages = ['ko_KR', 'en_US', 'ja_JP', 'zh_TW', 'th_TH']
+
+        logger.info("🔍 다른 Claude 수준 검증 시작:")
+
+        # 1. 언어 불일치 검증 (유니코드 범위 기반)
+        language_issues = []
         for key_id, row_data in self.excel_data.items():
-            # 1. 줄바꿈 문자 오류 감지 (\n → /n)
-            for lang, text in row_data.items():
-                if text and '/n' in str(text):
-                    specific_issues.append({
+            for lang in languages:
+                text = row_data.get(lang, '')
+                if not text:
+                    continue
+
+                problems = self.language_detector.detect_language_issues(str(text), lang)
+                if problems:
+                    language_issues.append({
                         'key_id': key_id,
                         'row_number': row_number,
-                        'issue_type': 'linebreak_error',
-                        'severity': 'high',
+                        'issue_type': 'language_mismatch',
+                        'severity': 'critical',
                         'language': lang,
-                        'text': str(text),
-                        'description': f'줄바꿈 문자 오타: "/n" → "\\n" 수정 필요 (화면에 그대로 노출됨)',
-                        'suggestion': str(text).replace('/n', '\\n')
+                        'text': str(text)[:100],
+                        'problems': problems,
+                        'description': f'{lang} 열에 다른 언어 문자 혼입: {", ".join(problems)}',
+                        'suggestion': f'{lang} 언어만 사용하도록 수정'
                     })
-
-            # 2. placeholder 중괄호 개수 오류 감지
-            ko_text = row_data.get('ko_KR', '')
-            if ko_text:
-                import re
-                ko_placeholders = re.findall(r'\{[^}]*\}', str(ko_text))
-
-                for lang, text in row_data.items():
-                    if lang != 'ko_KR' and text:
-                        lang_placeholders = re.findall(r'\{+[^}]*\}+', str(text))
-
-                        # 중괄호 개수가 다른 경우 감지
-                        for placeholder in lang_placeholders:
-                            if '{{' in placeholder or '}}' in placeholder:
-                                specific_issues.append({
-                                    'key_id': key_id,
-                                    'row_number': row_number,
-                                    'issue_type': 'placeholder_error',
-                                    'severity': 'high',
-                                    'language': lang,
-                                    'text': str(text),
-                                    'description': f'placeholder 중괄호 개수 오류: {placeholder} (변수 치환 실패 위험)',
-                                    'suggestion': f'중괄호 개수 확인 필요: {placeholder} → 단일 중괄호로 수정'
-                                })
-
-            # 3. 언어 혼재 감지 (한국어가 다른 언어 열에)
-            ko_text = row_data.get('ko_KR', '')
-            if ko_text:
-                for lang, text in row_data.items():
-                    if lang != 'ko_KR' and text and str(text).strip() == str(ko_text).strip():
-                        # 의도적으로 같을 수 있는 케이스 제외 (통화, 언어명, HTML 태그 등)
-                        if not self._is_intentional_same_text(str(text)):
-                            specific_issues.append({
-                                'key_id': key_id,
-                                'row_number': row_number,
-                                'issue_type': 'language_mix',
-                                'severity': 'critical',
-                                'language': lang,
-                                'text': str(text),
-                                'description': f'{lang} 열에 한국어 텍스트가 그대로 들어감: "{str(text)[:50]}..."',
-                                'suggestion': f'{lang} 언어로 번역 필요'
-                            })
 
             row_number += 1
 
-        logger.info(f"🔍 구체적 문제 검증: {len(specific_issues)}개 문제 발견")
-        return specific_issues
+        all_issues.extend(language_issues)
+        logger.info(f"├─ 언어 불일치: {len(language_issues)}개")
 
-    def _is_intentional_same_text(self, text: str) -> bool:
-        """의도적으로 동일할 수 있는 텍스트인지 판단"""
-        text_lower = text.lower().strip()
+        # 2. 번역 누락 검증
+        translation_issues = []
+        row_number = 2
 
-        # 통화 단위
-        currency_patterns = ['jpy', 'krw', 'thb', 'ntd', 'usd', '¥', '₩', '฿', '$']
-        if any(pattern in text_lower for pattern in currency_patterns):
-            return True
+        for key_id, row_data in self.excel_data.items():
+            ko_text = row_data.get('ko_KR', '')
 
-        # 언어명
-        language_names = ['中文', '繁體', '日本語', '한국어', 'ภาษาไทย', 'english']
-        if any(lang in text for lang in language_names):
-            return True
+            # 케이스 1: 모든 언어가 영어로 동일 (번역 누락)
+            en_text = row_data.get('en_US', '')
+            if (en_text and not self.language_detector.is_symbol_only(en_text) and
+                self.language_detector.has_latin(en_text)):
 
-        # HTML/코드
-        if '<' in text and '>' in text:
-            return True
+                all_same_as_en = True
+                for lang in ['ko_KR', 'ja_JP', 'zh_TW', 'th_TH']:
+                    other_text = row_data.get(lang, '')
+                    if other_text.strip() != en_text.strip():
+                        all_same_as_en = False
+                        break
 
-        # 3글자 이하 단순 문자
-        if len(text.strip()) <= 3:
-            return True
+                if all_same_as_en:
+                    # 텍스트 길이로 심각도 판단
+                    text_only = en_text
+                    for pattern in self.language_detector.PLACEHOLDER_PATTERNS:
+                        text_only = pattern.sub("", text_only)
+                    word_count = len(text_only.split())
 
-        return False
+                    severity = 'critical' if word_count >= 3 or len(text_only) >= 25 else 'medium'
+                    translation_issues.append({
+                        'key_id': key_id,
+                        'row_number': row_number,
+                        'issue_type': 'translation_missing_all',
+                        'severity': severity,
+                        'text': en_text[:100],
+                        'description': f'5개 언어 모두 영어 원문으로 동일 (번역 누락)',
+                        'suggestion': '각 언어로 번역 필요'
+                    })
+
+            # 케이스 2: 한국어 원문이 다른 언어 열에 그대로
+            if ko_text and self.language_detector.has_korean(ko_text):
+                for lang in ['en_US', 'ja_JP', 'zh_TW', 'th_TH']:
+                    other_text = row_data.get(lang, '')
+                    if not other_text:
+                        continue
+
+                    missing_info = self.language_detector.detect_translation_missing(
+                        ko_text, other_text, lang)
+
+                    if missing_info['is_missing']:
+                        translation_issues.append({
+                            'key_id': key_id,
+                            'row_number': row_number,
+                            'issue_type': 'translation_missing_korean',
+                            'severity': missing_info['severity'],
+                            'language': lang,
+                            'text': other_text[:100],
+                            'description': missing_info['description'],
+                            'suggestion': f'{lang} 언어로 번역 필요'
+                        })
+
+            row_number += 1
+
+        all_issues.extend(translation_issues)
+        logger.info(f"├─ 번역 누락: {len(translation_issues)}개")
+
+        # 3. Placeholder 일관성 검증
+        placeholder_issues = []
+        row_number = 2
+
+        for key_id, row_data in self.excel_data.items():
+            ko_text = row_data.get('ko_KR', '')
+            if not ko_text:
+                row_number += 1
+                continue
+
+            for lang in ['en_US', 'ja_JP', 'zh_TW', 'th_TH']:
+                other_text = row_data.get(lang, '')
+                if not other_text:
+                    continue
+
+                consistency = self.language_detector.check_placeholder_consistency(
+                    ko_text, other_text)
+
+                if not consistency['is_consistent']:
+                    placeholder_issues.append({
+                        'key_id': key_id,
+                        'row_number': row_number,
+                        'issue_type': 'placeholder_inconsistency',
+                        'severity': 'high',
+                        'language': lang,
+                        'ko_placeholders': consistency['ko_placeholders'],
+                        'target_placeholders': consistency['target_placeholders'],
+                        'missing': consistency['missing'],
+                        'extra': consistency['extra'],
+                        'description': f'Placeholder 불일치 (누락: {consistency["missing"]}, 추가: {consistency["extra"]})',
+                        'suggestion': 'Placeholder 개수와 형식을 한국어와 일치시키기'
+                    })
+
+            row_number += 1
+
+        all_issues.extend(placeholder_issues)
+        logger.info(f"├─ Placeholder 불일치: {len(placeholder_issues)}개")
+
+        # 4. /n 오타 검증
+        slash_n_issues = []
+        row_number = 2
+
+        for key_id, row_data in self.excel_data.items():
+            for lang in languages:
+                text = row_data.get(lang, '')
+                if not text:
+                    continue
+
+                if self.language_detector.check_slash_n_typo(str(text)):
+                    slash_n_issues.append({
+                        'key_id': key_id,
+                        'row_number': row_number,
+                        'issue_type': 'slash_n_typo',
+                        'severity': 'critical',
+                        'language': lang,
+                        'text': str(text)[:100],
+                        'description': f'"/n" 오타 발견 (화면에 그대로 노출됨)',
+                        'suggestion': str(text).replace('/n', '\\n')
+                    })
+
+            row_number += 1
+
+        all_issues.extend(slash_n_issues)
+        logger.info(f"├─ /n 오타: {len(slash_n_issues)}개")
+
+        logger.info(f"🎯 다른 Claude 수준 검증 완료: 총 {len(all_issues)}개 문제 발견")
+        return all_issues
 
     def _call_claude_ai(self, prompt: str) -> Optional[Dict[str, Any]]:
         """Claude AI 호출"""

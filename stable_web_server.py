@@ -5113,8 +5113,19 @@ def api_excel_validate():
 
         def run_validation():
             try:
-                logger.info(f"🔍 검증 시작: {filename} (세션: {session_id})")
-                result = validator.validate_excel_file(temp_file_path, session_id)
+                logger.info(f"🔍 전체 검증 시작: {filename} (세션: {session_id})")
+
+                # 진행 상황 업데이트 콜백
+                def progress_update(step: str, percent: int, message: str):
+                    if session_id in session_status:
+                        session_status[session_id]['progress'] = {
+                            'step': step,
+                            'percent': percent,
+                            'message': message,
+                            'is_full_validation': True  # 🚀 전체 검증 표시
+                        }
+
+                result = validator.validate_excel_file(temp_file_path, session_id, progress_update)
 
                 # 세션에 결과 저장
                 session_status[session_id] = {

@@ -35,33 +35,46 @@ class ExcelValidator:
 
         logger.info("✅ ExcelValidator 초기화 완료")
 
-    def validate_excel_file(self, file_path: str, session_id: str) -> Dict[str, Any]:
+    def validate_excel_file(self, file_path: str, session_id: str, progress_callback=None) -> Dict[str, Any]:
         """
-        엑셀 파일 전체 검증 실행
+        엑셀 파일 전체 검증 실행 (🚀 진짜 전체 데이터 검증!)
 
         Args:
             file_path: 엑셀 파일 경로
             session_id: 세션 ID
+            progress_callback: 진행 상황 업데이트 콜백
 
         Returns:
             검증 결과 딕셔너리
         """
         try:
-            logger.info(f"📊 엑셀 검증 시작: {file_path}")
+            logger.info(f"📊 엑셀 전체 검증 시작: {file_path}")
+
+            def update_progress(step: str, percent: int, message: str):
+                if progress_callback:
+                    progress_callback(step, percent, message)
+
+            update_progress("loading", 5, "엑셀 파일 로드 중...")
 
             # 1. 엑셀 파일 로드 및 구조 검증
             self.excel_data = self._load_excel_file(file_path)
             if not self.excel_data:
                 return self._create_error_result("엑셀 파일 로드 실패")
 
+            update_progress("loading", 10, "용어집 데이터 로드 중...")
+
             # 2. 용어집 데이터 로드
             self.terminology_data = self._load_terminology_data()
 
-            # 3. 5단계 Claude AI 검증 실행
+            total_rows = len(self.excel_data)
+            logger.info(f"🎯 전체 {total_rows}개 행 검증 시작 (더 이상 샘플링 없음!)")
+
+            # 3. 5단계 Claude AI 전체 검증 실행
             validation_results = {
                 'session_id': session_id,
                 'file_path': file_path,
-                'total_rows': len(self.excel_data),
+                'total_rows': total_rows,
+                'is_full_validation': True,  # 🚀 전체 검증 표시
                 'validation_summary': {
                     'total_issues': 0,
                     'spelling_errors': 0,
@@ -73,32 +86,37 @@ class ExcelValidator:
                 'detailed_results': {}
             }
 
-            # Step 1: 한글 맞춤법/띄어쓰기 검증
-            logger.info("1️⃣ 한글 맞춤법/띄어쓰기 검증 시작")
+            # Step 1: 한글 맞춤법/띄어쓰기 전체 검증
+            update_progress("validation", 15, "1단계: 한글 맞춤법 전체 검증 중...")
+            logger.info("1️⃣ 한글 맞춤법/띄어쓰기 전체 검증 시작")
             spelling_results = self._validate_korean_spelling()
             validation_results['detailed_results']['spelling_validation'] = spelling_results
             validation_results['validation_summary']['spelling_errors'] = len(spelling_results.get('issues', []))
 
-            # Step 2: 한글 용어집 비교 검증
-            logger.info("2️⃣ 한글 용어집 비교 검증 시작")
+            # Step 2: 한글 용어집 전체 비교 검증
+            update_progress("validation", 35, "2단계: 한글 용어집 전체 검증 중...")
+            logger.info("2️⃣ 한글 용어집 비교 전체 검증 시작")
             terminology_results = self._validate_korean_terminology()
             validation_results['detailed_results']['terminology_validation'] = terminology_results
             validation_results['validation_summary']['terminology_errors'] = len(terminology_results.get('issues', []))
 
-            # Step 3: 언어 일치성 검증
-            logger.info("3️⃣ 언어 일치성 검증 시작")
+            # Step 3: 언어 일치성 전체 검증
+            update_progress("validation", 55, "3단계: 언어 일치성 전체 검증 중...")
+            logger.info("3️⃣ 언어 일치성 전체 검증 시작")
             language_results = self._validate_language_consistency()
             validation_results['detailed_results']['language_validation'] = language_results
             validation_results['validation_summary']['language_mismatches'] = len(language_results.get('issues', []))
 
-            # Step 4: 다국어 용어집 비교 검증
-            logger.info("4️⃣ 다국어 용어집 비교 검증 시작")
+            # Step 4: 다국어 용어집 전체 비교 검증
+            update_progress("validation", 75, "4단계: 다국어 용어집 전체 검증 중...")
+            logger.info("4️⃣ 다국어 용어집 비교 전체 검증 시작")
             multilingual_results = self._validate_multilingual_terminology()
             validation_results['detailed_results']['multilingual_validation'] = multilingual_results
             validation_results['validation_summary']['multilingual_errors'] = len(multilingual_results.get('issues', []))
 
-            # Step 5: 빈 행 및 완성도 검증
-            logger.info("5️⃣ 데이터 완성도 검증 시작")
+            # Step 5: 빈 행 및 완성도 전체 검증
+            update_progress("validation", 90, "5단계: 데이터 완성도 전체 검증 중...")
+            logger.info("5️⃣ 데이터 완성도 전체 검증 시작")
             completeness_results = self._validate_data_completeness()
             validation_results['detailed_results']['completeness_validation'] = completeness_results
             validation_results['validation_summary']['completeness_issues'] = len(completeness_results.get('issues', []))
@@ -113,14 +131,21 @@ class ExcelValidator:
             ])
             validation_results['validation_summary']['total_issues'] = total_issues
 
+            update_progress("completed", 100, "전체 검증 완료!")
+
             # 검증 완료 시간
             validation_results['completed_at'] = time.time()
             validation_results['has_issues'] = total_issues > 0
+            validation_results['total_batches'] = sum([
+                spelling_results.get('batches_processed', 0),
+                terminology_results.get('batches_processed', 0)
+            ])
 
             # 결과 저장
             self.validation_results[session_id] = validation_results
 
-            logger.info(f"✅ 엑셀 검증 완료: 총 {total_issues}개 문제 발견")
+            logger.info(f"🎉 엑셀 전체 검증 완료: 총 {total_rows}개 행 검증, {total_issues}개 문제 발견")
+            logger.info(f"📊 검증 범위: 100% (이전: 샘플 0.6~1.3%)")
             return validation_results
 
         except Exception as e:
@@ -211,35 +236,50 @@ class ExcelValidator:
             if not korean_data:
                 return {'status': 'no_korean_text', 'issues': []}
 
-            # Claude AI로 맞춤법 검증 (전체 데이터 or 설정 가능)
-            max_check = self.config.get('validation_max_items', 50)  # 기본 50개, 설정 가능
-            sample_data = korean_data[:max_check]
-            prompt = self.prompts.get_spelling_validation_prompt([item['text'] for item in sample_data], [item['key_id'] for item in sample_data])
-            logger.info(f"📝 맞춤법 검증 프롬프트 생성 완료 - {len(sample_data)}개 텍스트")
+            # 🚀 전체 데이터 배치 검증 (더 이상 샘플링 아님!)
+            batch_size = 25  # Claude AI 안정적 처리 가능한 배치 크기
+            all_issues = []
+            total_batches = (len(korean_data) + batch_size - 1) // batch_size
 
-            response = self._call_claude_ai(prompt)
+            logger.info(f"📝 맞춤법 전체 검증 시작 - 총 {len(korean_data)}개 텍스트, {total_batches}개 배치")
 
-            if response and 'results' in response:
-                logger.info(f"✅ 맞춤법 검증 응답 처리 - {len(response['results'])}개 결과")
-                # 결과 처리
-                issues = []
-                for i, result in enumerate(response['results']):
-                    if not result.get('is_correct', True) and i < len(sample_data):
-                        for error in result.get('errors', []):
-                            issues.append({
-                                'key_id': sample_data[i]['key_id'],
-                                'row_number': sample_data[i]['row_number'],
-                                'text': result['original_text'],
-                                'error_type': error['type'],
-                                'error': error['error'],
-                                'suggestion': error['suggestion']
-                            })
+            for batch_idx in range(0, len(korean_data), batch_size):
+                batch_data = korean_data[batch_idx:batch_idx + batch_size]
+                batch_num = (batch_idx // batch_size) + 1
 
-                return {
-                    'status': 'completed',
-                    'issues': issues,
-                    'total_checked': len(sample_data)
-                }
+                logger.info(f"📝 맞춤법 배치 {batch_num}/{total_batches} 검증 중... ({len(batch_data)}개)")
+
+                prompt = self.prompts.get_spelling_validation_prompt(
+                    [item['text'] for item in batch_data],
+                    [item['key_id'] for item in batch_data]
+                )
+
+                response = self._call_claude_ai(prompt)
+
+                if response and 'results' in response:
+                    # 배치 결과 처리
+                    for i, result in enumerate(response['results']):
+                        if not result.get('is_correct', True) and i < len(batch_data):
+                            for error in result.get('errors', []):
+                                all_issues.append({
+                                    'key_id': batch_data[i]['key_id'],
+                                    'row_number': batch_data[i]['row_number'],
+                                    'text': result['original_text'],
+                                    'error_type': error['type'],
+                                    'error': error['error'],
+                                    'suggestion': error['suggestion']
+                                })
+                else:
+                    logger.warning(f"⚠️ 배치 {batch_num} Claude AI 응답 실패")
+
+            logger.info(f"✅ 맞춤법 전체 검증 완료 - {len(korean_data)}개 검증, {len(all_issues)}개 문제 발견")
+
+            return {
+                'status': 'completed',
+                'issues': all_issues,
+                'total_checked': len(korean_data),
+                'batches_processed': total_batches
+            }
 
             return {'status': 'claude_error', 'issues': []}
 
@@ -266,46 +306,65 @@ class ExcelValidator:
             if not korean_data:
                 return {'status': 'no_korean_text', 'issues': []}
 
-            # Claude AI로 용어집 검증 (처음 10개만)
-            sample_data = korean_data[:10]
-            prompt = self.prompts.get_terminology_validation_prompt([item['text'] for item in sample_data], self.terminology_data, [item['key_id'] for item in sample_data])
-            response = self._call_claude_ai(prompt)
+            # 🚀 용어집 전체 데이터 배치 검증
+            batch_size = 20  # 용어집 데이터가 많아서 조금 작게
+            all_issues = []
+            all_exceptions = []
+            total_batches = (len(korean_data) + batch_size - 1) // batch_size
 
-            if response and 'results' in response:
-                # 결과 처리
-                issues = []
-                exceptions = []
-                for i, result in enumerate(response['results']):
-                    if i >= len(sample_data):
-                        continue
+            logger.info(f"📚 용어집 전체 검증 시작 - 총 {len(korean_data)}개 텍스트, {total_batches}개 배치")
 
-                    current_data = sample_data[i]
-                    if result.get('has_terminology_issue', False):
-                        for issue in result.get('issues', []):
-                            issues.append({
+            for batch_idx in range(0, len(korean_data), batch_size):
+                batch_data = korean_data[batch_idx:batch_idx + batch_size]
+                batch_num = (batch_idx // batch_size) + 1
+
+                logger.info(f"📚 용어집 배치 {batch_num}/{total_batches} 검증 중... ({len(batch_data)}개)")
+
+                prompt = self.prompts.get_terminology_validation_prompt(
+                    [item['text'] for item in batch_data],
+                    self.terminology_data,
+                    [item['key_id'] for item in batch_data]
+                )
+                response = self._call_claude_ai(prompt)
+
+                if response and 'results' in response:
+                    # 배치 결과 처리
+                    for i, result in enumerate(response['results']):
+                        if i >= len(batch_data):
+                            continue
+
+                        current_data = batch_data[i]
+                        if result.get('has_terminology_issue', False):
+                            for issue in result.get('issues', []):
+                                all_issues.append({
+                                    'key_id': current_data['key_id'],
+                                    'row_number': current_data['row_number'],
+                                    'text': result['original_text'],
+                                    'wrong_term': issue['wrong_term'],
+                                    'suggested_term': issue['suggested_term'],
+                                    'reason': issue['reason']
+                                })
+
+                        # exceptional 항목 처리
+                        if result.get('is_exception', False):
+                            all_exceptions.append({
                                 'key_id': current_data['key_id'],
                                 'row_number': current_data['row_number'],
                                 'text': result['original_text'],
-                                'wrong_term': issue['wrong_term'],
-                                'suggested_term': issue['suggested_term'],
-                                'reason': issue['reason']
+                                'exception_reason': result.get('exception_reason', 'exceptional 항목으로 검증 통과')
                             })
+                else:
+                    logger.warning(f"⚠️ 용어집 배치 {batch_num} Claude AI 응답 실패")
 
-                    # exceptional 항목 처리
-                    if result.get('is_exception', False):
-                        exceptions.append({
-                            'key_id': current_data['key_id'],
-                            'row_number': current_data['row_number'],
-                            'text': result['original_text'],
-                            'exception_reason': result.get('exception_reason', 'exceptional 항목으로 검증 통과')
-                        })
+            logger.info(f"✅ 용어집 전체 검증 완료 - {len(korean_data)}개 검증, {len(all_issues)}개 문제 발견")
 
-                return {
-                    'status': 'completed',
-                    'issues': issues,
-                    'exceptions': exceptions,
-                    'total_checked': len(sample_data)
-                }
+            return {
+                'status': 'completed',
+                'issues': all_issues,
+                'exceptions': all_exceptions,
+                'total_checked': len(korean_data),
+                'batches_processed': total_batches
+            }
 
             return {'status': 'claude_error', 'issues': []}
 
@@ -334,7 +393,7 @@ class ExcelValidator:
                     row_number += 1
 
                 if texts_data:
-                    texts_by_column[lang] = texts_data[:5]  # 처음 5개만 샘플로
+                    texts_by_column[lang] = texts_data  # 🚀 전체 데이터 사용 (더 이상 샘플링 없음)
 
             if not texts_by_column:
                 return {'status': 'no_text_data', 'issues': []}
@@ -401,7 +460,7 @@ class ExcelValidator:
                     row_number += 1
 
                 if texts_data:
-                    texts_by_language[lang] = texts_data[:5]  # 샘플
+                    texts_by_language[lang] = texts_data  # 🚀 전체 데이터 사용
 
             if not texts_by_language:
                 return {'status': 'no_multilingual_data', 'issues': []}

@@ -356,6 +356,109 @@ UI/UX 용어, 기술 용어, 금융 용어는 일반적인 표기를 따르되, 
 }}
 ```"""
 
+    def get_comprehensive_validation_prompt(self, excel_data: dict) -> str:
+        """종합 엑셀 검증 프롬프트 (사용자 제공 템플릿 기반)"""
+        # 사용자 정의 프롬프트 조회
+        custom_template = self._get_custom_prompt('excel_comprehensive_validation', '')
+
+        if custom_template:
+            try:
+                # 엑셀 데이터를 문자열로 포맷팅
+                excel_content = self._format_excel_for_prompt(excel_data)
+                return custom_template.format(excel_content=excel_content)
+            except Exception as e:
+                print(f"❌ 종합 검증 프롬프트 포맷팅 오류: {e}")
+
+        # Fallback: 기본 종합 검증 프롬프트 (사용자 제공 템플릿)
+        excel_content = self._format_excel_for_prompt(excel_data)
+
+        return f"""첨부한 엑셀 파일은 다국어 번역 리소스 파일입니다. 다음 검증을 수행해주세요.
+
+[검증 대상 언어]
+en_US, ko_KR, ja_JP, zh_TW, th_TH
+
+[검증 항목]
+1. 5개 언어 중 빈칸으로 값이 없는 항목의 행번호와 key_id
+2. 언어 열에 맞지 않은 다른 언어 문자가 섞여 있는 항목의 행번호와 key_id
+   - 단, 언어 선택 UI(中文/日本語/한국어/ภาษาไทย), 통화 기호(¥/₩/฿), 브랜드명, placeholder만 있는 셀은 제외
+3. 한국어를 기준으로 영어/일본어/대만어/태국어 번역이 이상하거나 오역된 경우
+   - 번역 누락 (원문이 그대로 들어간 경우)
+   - 줄바꿈(\\n, <br/>)이 누락되거나 /n으로 잘못 입력된 경우
+   - placeholder 변수({{0}}, {{{{0}}}}, <span/> 등)의 개수/형식이 한국어와 다른 경우
+   - 다른 언어 문자가 섞인 오타성 오류
+
+[엑셀 데이터]
+{excel_content}
+
+[출력 형식]
+다음과 같은 마크다운 표 형식으로 정리해주세요:
+
+## 1. 빈 값 검증 결과
+| 행번호 | Key ID | 언어 | 문제 |
+|--------|--------|------|------|
+| 2 | XLT_key_001 | en_US | 영어 번역 누락 |
+
+## 2. 언어 일치성 검증 결과
+| 행번호 | Key ID | 언어 | 감지된 문제 | 원문 |
+|--------|--------|------|------------|------|
+| 5 | XLT_key_004 | en_US | 한국어 문자 포함 | 로그인하기 Login |
+
+## 3. 번역 품질 검증 결과
+| 행번호 | Key ID | 언어 | 문제 유형 | 원문(ko_KR) | 번역문 | 권장 수정 |
+|--------|--------|------|-----------|-------------|--------|----------|
+| 3 | XLT_key_002 | en_US | 번역 누락 | 지갑 연결하기 | 지갑 연결하기 | Connect Wallet |
+
+## 우선 수정 권장 항목 요약
+- **심각 (즉시 수정)**: X건
+  - 번역 완전 누락: X건
+  - 언어 불일치: X건
+- **보통 (검토 필요)**: X건
+  - Placeholder 불일치: X건
+  - 오타성 오류: X건
+- **경미 (참고)**: X건
+  - 띄어쓰기 개선 가능: X건
+
+총 {len(excel_data)}개 항목 중 문제 발견: X건 (X.X%)"""
+
+    def _format_excel_for_prompt(self, excel_data: dict) -> str:
+        """엑셀 데이터를 프롬프트용으로 포맷팅"""
+        if not excel_data:
+            return "데이터 없음"
+
+        # 헤더 생성
+        headers = ['행번호', 'Key ID', 'ko_KR', 'en_US', 'ja_JP', 'zh_TW', 'th_TH']
+        content = " | ".join(headers) + "\n"
+        content += "|".join(["-------"] * len(headers)) + "\n"
+
+        # 데이터 행 생성 (최대 100개까지만)
+        row_count = 0
+        for key_id, row_data in excel_data.items():
+            if row_count >= 100:  # 프롬프트 길이 제한
+                content += f"... (총 {len(excel_data)}개 항목, 처음 100개만 표시)\n"
+                break
+
+            row_count += 1
+            ko_text = row_data.get('ko_KR', '')
+            en_text = row_data.get('en_US', '')
+            ja_text = row_data.get('ja_JP', '')
+            zh_text = row_data.get('zh_TW', '')
+            th_text = row_data.get('th_TH', '')
+
+            # 길이 제한 (각 셀 50자까지)
+            texts = [
+                str(row_count + 1),
+                str(key_id)[:30],
+                str(ko_text)[:50] + ("..." if len(str(ko_text)) > 50 else ""),
+                str(en_text)[:50] + ("..." if len(str(en_text)) > 50 else ""),
+                str(ja_text)[:50] + ("..." if len(str(ja_text)) > 50 else ""),
+                str(zh_text)[:50] + ("..." if len(str(zh_text)) > 50 else ""),
+                str(th_text)[:50] + ("..." if len(str(th_text)) > 50 else "")
+            ]
+
+            content += " | ".join(texts) + "\n"
+
+        return content
+
     @staticmethod
     def get_correction_validation_prompt(original_data: dict, corrected_data: dict) -> str:
         """교정 결과 검증 프롬프트"""

@@ -5101,6 +5101,12 @@ def api_excel_validate():
         # 세션 ID 생성
         session_id = f"validate_{int(time.time())}"
 
+        # 검증 모드 확인 (기본값: 종합검증)
+        validation_mode = request.form.get('validation_mode', 'comprehensive')
+        use_comprehensive = validation_mode == 'comprehensive'
+
+        logger.info(f"🎯 검증 모드: {'종합검증' if use_comprehensive else '5단계 개별검증'}")
+
         # 검증 모듈 import 및 실행
         from xlt.validation.excel_validator import ExcelValidator
         from xlt.core.config import XLTConfig
@@ -5125,7 +5131,7 @@ def api_excel_validate():
                             'is_full_validation': True  # 🚀 전체 검증 표시
                         }
 
-                result = validator.validate_excel_file(temp_file_path, session_id, progress_update)
+                result = validator.validate_excel_file(temp_file_path, session_id, progress_update, use_comprehensive)
 
                 # 세션에 결과 저장
                 session_status[session_id] = {

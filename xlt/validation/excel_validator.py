@@ -37,7 +37,7 @@ class ExcelValidator:
 
         logger.info("✅ ExcelValidator 초기화 완료")
 
-    def validate_excel_file(self, file_path: str, session_id: str, progress_callback=None) -> Dict[str, Any]:
+    def validate_excel_file(self, file_path: str, session_id: str, progress_callback=None, use_comprehensive_validation=True) -> Dict[str, Any]:
         """
         엑셀 파일 전체 검증 실행 (🚀 진짜 전체 데이터 검증!)
 
@@ -45,6 +45,7 @@ class ExcelValidator:
             file_path: 엑셀 파일 경로
             session_id: 세션 ID
             progress_callback: 진행 상황 업데이트 콜백
+            use_comprehensive_validation: True=종합검증, False=5단계 개별검증
 
         Returns:
             검증 결과 딕셔너리
@@ -71,12 +72,13 @@ class ExcelValidator:
             total_rows = len(self.excel_data)
             logger.info(f"🎯 전체 {total_rows}개 행 검증 시작 (더 이상 샘플링 없음!)")
 
-            # 3. 5단계 Claude AI 전체 검증 실행
+            # 3. Claude AI 전체 검증 실행 (종합/개별 선택)
             validation_results = {
                 'session_id': session_id,
                 'file_path': file_path,
                 'total_rows': total_rows,
                 'is_full_validation': True,  # 🚀 전체 검증 표시
+                'validation_method': 'comprehensive' if use_comprehensive_validation else 'step_by_step',
                 'validation_summary': {
                     'total_issues': 0,
                     'spelling_errors': 0,
@@ -88,72 +90,172 @@ class ExcelValidator:
                 'detailed_results': {}
             }
 
-            # Step 1: 한글 맞춤법/띄어쓰기 전체 검증
-            update_progress("validation", 15, "1단계: 한글 맞춤법 전체 검증 중...")
-            logger.info("1️⃣ 한글 맞춤법/띄어쓰기 전체 검증 시작")
-            spelling_results = self._validate_korean_spelling()
-            validation_results['detailed_results']['spelling_validation'] = spelling_results
-            validation_results['validation_summary']['spelling_errors'] = len(spelling_results.get('issues', []))
+            if use_comprehensive_validation:
+                # 🆕 종합 검증 프롬프트 사용 (사용자 제공 템플릿)
+                logger.info("🚀 종합 검증 프롬프트로 통합 검증 실행")
+                comprehensive_results = self._validate_comprehensive()
+                validation_results['detailed_results']['comprehensive_validation'] = comprehensive_results
+                validation_results['validation_summary'] = comprehensive_results.get('summary', validation_results['validation_summary'])
+            else:
+                # 🔄 기존 5단계 개별 검증
+                logger.info("🔄 5단계 개별 검증 실행")
+                validation_results = self._validate_step_by_step(validation_results, update_progress)
 
-            # Step 2: 한글 용어집 전체 비교 검증
-            update_progress("validation", 35, "2단계: 한글 용어집 전체 검증 중...")
-            logger.info("2️⃣ 한글 용어집 비교 전체 검증 시작")
-            terminology_results = self._validate_korean_terminology()
-            validation_results['detailed_results']['terminology_validation'] = terminology_results
-            validation_results['validation_summary']['terminology_errors'] = len(terminology_results.get('issues', []))
-
-            # Step 3: 언어 일치성 전체 검증
-            update_progress("validation", 55, "3단계: 언어 일치성 전체 검증 중...")
-            logger.info("3️⃣ 언어 일치성 전체 검증 시작")
-            language_results = self._validate_language_consistency()
-            validation_results['detailed_results']['language_validation'] = language_results
-            validation_results['validation_summary']['language_mismatches'] = len(language_results.get('issues', []))
-
-            # Step 4: 다국어 용어집 전체 비교 검증
-            update_progress("validation", 75, "4단계: 다국어 용어집 전체 검증 중...")
-            logger.info("4️⃣ 다국어 용어집 비교 전체 검증 시작")
-            multilingual_results = self._validate_multilingual_terminology()
-            validation_results['detailed_results']['multilingual_validation'] = multilingual_results
-            validation_results['validation_summary']['multilingual_errors'] = len(multilingual_results.get('issues', []))
-
-            # Step 5: 빈 행 및 완성도 전체 검증
-            update_progress("validation", 90, "5단계: 데이터 완성도 전체 검증 중...")
-            logger.info("5️⃣ 데이터 완성도 전체 검증 시작")
-            completeness_results = self._validate_data_completeness()
-            validation_results['detailed_results']['completeness_validation'] = completeness_results
-            validation_results['validation_summary']['completeness_issues'] = len(completeness_results.get('issues', []))
-
-            # 전체 문제 수 계산
-            total_issues = sum([
-                validation_results['validation_summary']['spelling_errors'],
-                validation_results['validation_summary']['terminology_errors'],
-                validation_results['validation_summary']['language_mismatches'],
-                validation_results['validation_summary']['multilingual_errors'],
-                validation_results['validation_summary']['completeness_issues']
-            ])
-            validation_results['validation_summary']['total_issues'] = total_issues
-
-            update_progress("completed", 100, "전체 검증 완료!")
-
-            # 검증 완료 시간
-            validation_results['completed_at'] = time.time()
-            validation_results['has_issues'] = total_issues > 0
-            validation_results['total_batches'] = sum([
-                spelling_results.get('batches_processed', 0),
-                terminology_results.get('batches_processed', 0)
-            ])
-
-            # 결과 저장
-            self.validation_results[session_id] = validation_results
-
-            logger.info(f"🎉 엑셀 전체 검증 완료: 총 {total_rows}개 행 검증, {total_issues}개 문제 발견")
-            logger.info(f"📊 검증 범위: 100% (이전: 샘플 0.6~1.3%)")
-            return validation_results
+            return self._finalize_validation_results(session_id, validation_results, total_rows)
 
         except Exception as e:
             logger.error(f"❌ 엑셀 검증 오류: {e}")
             logger.error(traceback.format_exc())
             return self._create_error_result(f"검증 처리 오류: {str(e)}")
+
+    def _validate_comprehensive(self) -> Dict[str, Any]:
+        """🆕 종합 검증 프롬프트를 사용한 통합 검증"""
+        try:
+            logger.info("📋 종합 검증 프롬프트 생성 중...")
+
+            # 종합 검증 프롬프트 생성
+            prompt = self.prompts.get_comprehensive_validation_prompt(self.excel_data)
+
+            logger.info("🤖 Claude AI 종합 검증 실행 중...")
+            result = self._call_claude_cli(prompt, "종합 검증")
+
+            if not result or 'error' in result:
+                logger.error(f"❌ Claude AI 종합 검증 실패: {result}")
+                return self._create_empty_validation_result("종합 검증")
+
+            # Claude 응답을 파싱하여 구조화된 결과로 변환
+            parsed_result = self._parse_comprehensive_result(result.get('response', ''))
+
+            logger.info(f"✅ 종합 검증 완료: {parsed_result.get('total_issues', 0)}개 문제 발견")
+            return parsed_result
+
+        except Exception as e:
+            logger.error(f"❌ 종합 검증 오류: {e}")
+            return self._create_empty_validation_result("종합 검증")
+
+    def _validate_step_by_step(self, validation_results: Dict, update_progress) -> Dict[str, Any]:
+        """🔄 기존 5단계 개별 검증"""
+
+        # Step 1: 한글 맞춤법/띄어쓰기 전체 검증
+        update_progress("validation", 15, "1단계: 한글 맞춤법 전체 검증 중...")
+        logger.info("1️⃣ 한글 맞춤법/띄어쓰기 전체 검증 시작")
+        spelling_results = self._validate_korean_spelling()
+        validation_results['detailed_results']['spelling_validation'] = spelling_results
+        validation_results['validation_summary']['spelling_errors'] = len(spelling_results.get('issues', []))
+
+        # Step 2: 한글 용어집 전체 비교 검증
+        update_progress("validation", 35, "2단계: 한글 용어집 전체 검증 중...")
+        logger.info("2️⃣ 한글 용어집 비교 전체 검증 시작")
+        terminology_results = self._validate_korean_terminology()
+        validation_results['detailed_results']['terminology_validation'] = terminology_results
+        validation_results['validation_summary']['terminology_errors'] = len(terminology_results.get('issues', []))
+
+        # Step 3: 언어 일치성 전체 검증
+        update_progress("validation", 55, "3단계: 언어 일치성 전체 검증 중...")
+        logger.info("3️⃣ 언어 일치성 전체 검증 시작")
+        language_results = self._validate_language_consistency()
+        validation_results['detailed_results']['language_validation'] = language_results
+        validation_results['validation_summary']['language_mismatches'] = len(language_results.get('issues', []))
+
+        # Step 4: 다국어 용어집 전체 비교 검증
+        update_progress("validation", 75, "4단계: 다국어 용어집 전체 검증 중...")
+        logger.info("4️⃣ 다국어 용어집 비교 전체 검증 시작")
+        multilingual_results = self._validate_multilingual_terminology()
+        validation_results['detailed_results']['multilingual_validation'] = multilingual_results
+        validation_results['validation_summary']['multilingual_errors'] = len(multilingual_results.get('issues', []))
+
+        # Step 5: 빈 행 및 완성도 전체 검증
+        update_progress("validation", 90, "5단계: 데이터 완성도 전체 검증 중...")
+        logger.info("5️⃣ 데이터 완성도 전체 검증 시작")
+        completeness_results = self._validate_data_completeness()
+        validation_results['detailed_results']['completeness_validation'] = completeness_results
+        validation_results['validation_summary']['completeness_issues'] = len(completeness_results.get('issues', []))
+
+        return validation_results
+
+    def _finalize_validation_results(self, session_id: str, validation_results: Dict, total_rows: int) -> Dict[str, Any]:
+        """검증 결과 최종화"""
+        # 전체 문제 수 계산
+        summary = validation_results['validation_summary']
+        total_issues = sum([
+            summary.get('spelling_errors', 0),
+            summary.get('terminology_errors', 0),
+            summary.get('language_mismatches', 0),
+            summary.get('multilingual_errors', 0),
+            summary.get('completeness_issues', 0)
+        ])
+        validation_results['validation_summary']['total_issues'] = total_issues
+
+        # 검증 완료 시간
+        validation_results['completed_at'] = time.time()
+        validation_results['has_issues'] = total_issues > 0
+
+        # 결과 저장
+        self.validation_results[session_id] = validation_results
+
+        logger.info(f"🎉 엑셀 전체 검증 완료: 총 {total_rows}개 행 검증, {total_issues}개 문제 발견")
+        return validation_results
+
+    def _parse_comprehensive_result(self, claude_response: str) -> Dict[str, Any]:
+        """종합 검증 결과를 파싱하여 구조화"""
+        try:
+            logger.info("📝 Claude 종합 검증 결과 파싱 중...")
+
+            # Claude 응답에서 마크다운 테이블과 요약 정보 추출
+            result = {
+                'validation_type': 'comprehensive',
+                'raw_response': claude_response,
+                'summary': {
+                    'total_issues': 0,
+                    'empty_values': 0,
+                    'language_mismatches': 0,
+                    'translation_issues': 0,
+                    'critical_issues': 0,
+                    'moderate_issues': 0,
+                    'minor_issues': 0
+                },
+                'detailed_issues': {
+                    'empty_values': [],
+                    'language_mismatches': [],
+                    'translation_issues': []
+                },
+                'markdown_report': claude_response  # 원본 마크다운 보고서 저장
+            }
+
+            # 간단한 파싱으로 문제 개수 추정 (정확한 파싱은 나중에)
+            lines = claude_response.split('\n')
+            table_rows = [line for line in lines if '|' in line and not line.startswith('|---')]
+
+            # 테이블 행 개수로 문제 수 추정
+            empty_value_count = len([line for line in table_rows if '빈 값' in line or '누락' in line])
+            language_mismatch_count = len([line for line in table_rows if '언어' in line and ('포함' in line or '불일치' in line)])
+            translation_issue_count = len([line for line in table_rows if ('번역' in line and '누락' in line) or '오역' in line])
+
+            result['summary']['empty_values'] = empty_value_count
+            result['summary']['language_mismatches'] = language_mismatch_count
+            result['summary']['translation_issues'] = translation_issue_count
+            result['summary']['total_issues'] = empty_value_count + language_mismatch_count + translation_issue_count
+
+            # 우선순위 분류 (키워드 기반)
+            if '심각' in claude_response:
+                result['summary']['critical_issues'] = len([line for line in lines if '심각' in line])
+            if '보통' in claude_response:
+                result['summary']['moderate_issues'] = len([line for line in lines if '보통' in line])
+            if '경미' in claude_response:
+                result['summary']['minor_issues'] = len([line for line in lines if '경미' in line])
+
+            logger.info(f"✅ 종합 검증 결과 파싱 완료: {result['summary']['total_issues']}개 문제")
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ 종합 검증 결과 파싱 오류: {e}")
+            return {
+                'validation_type': 'comprehensive',
+                'raw_response': claude_response,
+                'summary': {'total_issues': 0},
+                'detailed_issues': {},
+                'parsing_error': str(e)
+            }
 
     def _load_excel_file(self, file_path: str) -> Dict[str, Dict[str, str]]:
         """엑셀 파일 로드 및 데이터 구조화"""

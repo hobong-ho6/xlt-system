@@ -2456,9 +2456,16 @@ class XLTWebInterface {
             this.hideAllValidationSections();
             this.showValidationProgress();
 
+            // 검증 모드 확인
+            const validationModeRadio = document.querySelector('input[name="validation_mode"]:checked');
+            const validationMode = validationModeRadio ? validationModeRadio.value : 'comprehensive';
+
+            console.log(`🎯 선택된 검증 모드: ${validationMode === 'comprehensive' ? '종합검증' : '5단계 개별검증'}`);
+
             // 폼 데이터 생성
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('validation_mode', validationMode);
 
             // API 호출
             const response = await fetch('/api/excel-validate', {

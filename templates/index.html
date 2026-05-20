@@ -306,6 +306,36 @@
                                                             sampleformat.xlsx와 동일한 형식의 엑셀 파일을 업로드해주세요.
                                                         </div>
                                                     </div>
+
+                                                    <!-- 🆕 검증 모드 선택 -->
+                                                    <div class="mb-3">
+                                                        <label class="form-label">검증 모드</label>
+                                                        <div class="row">
+                                                            <div class="col-md-6">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="radio" name="validation_mode" id="comprehensive-mode" value="comprehensive" checked>
+                                                                    <label class="form-check-label" for="comprehensive-mode">
+                                                                        <strong>🚀 종합검증 (권장)</strong>
+                                                                        <br><small class="text-muted">하나의 통합 프롬프트로 모든 검증을 한 번에 수행</small>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-md-6">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="radio" name="validation_mode" id="step-by-step-mode" value="step_by_step">
+                                                                    <label class="form-check-label" for="step-by-step-mode">
+                                                                        <strong>🔄 5단계 개별검증</strong>
+                                                                        <br><small class="text-muted">맞춤법→용어집→언어일치→다국어→완성도 순서로 검증</small>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-text">
+                                                            <i class="fas fa-lightbulb text-warning me-1"></i>
+                                                            종합검증은 사용자 제공 템플릿을 사용하여 더 효율적이고 상세한 결과를 제공합니다.
+                                                        </div>
+                                                    </div>
+
                                                     <button type="submit" class="btn btn-primary">
                                                         <i class="fas fa-search me-2"></i>검증 시작
                                                     </button>
